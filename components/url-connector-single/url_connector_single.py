@@ -6,7 +6,7 @@
 The operator to pull and pre-process input data from pre-signed URLs.
 """
 
-# pip install numpy opentelemetry-distro opentelemetry-exporter-otlp
+# pip install rasterio numpy opentelemetry-distro opentelemetry-exporter-otlp
 
 import os
 import sys
