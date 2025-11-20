@@ -1,0 +1,43 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-template_process
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pipeline-template_process
+  template:
+    metadata:
+      labels:
+        app: pipeline-template_process
+        geostudio: pipelines
+    spec:
+      imagePullSecrets:
+       - name: all-icr-io
+       - name: access-container-registry
+       - name: ris-private-registry
+      containers:
+      - name: pipeline-run-inference
+        image: us.icr.io/gfmaas/claimed-template_process:v1.0
+        env:
+          - name: orchestrate_db_uri
+            valueFrom:
+              secretKeyRef:
+                name: pipelines-orchestration-db
+                key: orchestrate_db_uri
+          - name: process_exec
+            value: 'python claimed_template_process.py'
+          - name: process_id
+            value: template_process
+        volumeMounts:
+          - name: test-inference-pvc
+            mountPath: /data
+      volumes:
+        - name: test-inference-pvc
+          persistentVolumeClaim:
+            claimName: inference-shared-pvc
