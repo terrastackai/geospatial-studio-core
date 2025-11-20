@@ -1,0 +1,42 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ deployment_name }}
+  labels:
+    app: {{ deployment_name }}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: {{ deployment_name }}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: {{ deployment_name }}
+    spec:
+      serviceAccountName: rhoairaytest-sa
+      hostname: {{ deployment_name }}
+      containers:
+        - resources:
+            limits:
+              cpu: '16'
+              memory: 32G
+            requests:
+              cpu: '16'
+              memory: 16G
+          name: rhoairaytest
+          image: {{ image }}
+          command:
+            - /bin/sh
+          args:
+            - '-c'
+            - 'python rayclustertest.py {{ ocp_token }} {{ namespace }}'
+            - '&&'
+            - 'tail -f /dev/null'
+          imagePullPolicy: Always

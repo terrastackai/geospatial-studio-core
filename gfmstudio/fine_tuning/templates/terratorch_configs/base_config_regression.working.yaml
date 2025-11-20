@@ -1,0 +1,216 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+# lightning.pytorch==2.1.1
+seed_everything: 42
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  # precision: 16-mixed
+  logger:
+    class_path: lightning.pytorch.loggers.mlflow.MLFlowLogger
+    init_args:
+      experiment_name: {{ tune_id }}
+      run_name: "Regression1"
+      tracking_uri: {{ mlflow_tracking_url }}
+      save_dir: {{ mount_root + 'tune-tasks/' + tune_id + '/mlflow' }}
+      {% if mlflow_tags -%}
+      tags:
+        {% for key, value in mlflow_tags.items() -%}
+        {{ key }}: {{ value }}
+        {% endfor %}
+      {%- endif %}
+
+  callbacks:
+    - class_path: RichProgressBar
+    - class_path: LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    # ---- Early stop if ----
+    {% if runner["early_stopping_patience"] -%}
+    - class_path: EarlyStopping
+      init_args:
+        monitor: val/loss
+        patience: {{ runner["early_stopping_patience"] }}
+    {% endif -%}
+    # ---- Early stop endif ----
+    - class_path: StateDictAwareModelCheckpoint
+      init_args:
+        filename: {{ mount_root + 'tune-tasks/' + tune_id + '/{epoch}' }}
+        monitor: "val/loss"
+        every_n_epochs: 2
+        verbose: true
+    - class_path: StateDictAwareModelCheckpoint
+      init_args:
+        filename: {{ mount_root + 'tune-tasks/' + tune_id + '/{epoch}_state_dict' }}
+        save_weights_only: true
+        monitor: "val/loss"
+        every_n_epochs: 2
+        verbose: true
+  max_epochs: {{ runner["max_epochs"] }}
+  ## check_val_every_n_epoch: {{ evaluation["interval"] }}
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 20
+  enable_checkpointing: true
+  default_root_dir: {{ mount_root + 'tune-tasks/' + tune_id }}
+data:
+  class_path: terratorch.datamodules.GenericNonGeoPixelwiseRegressionDataModule
+  init_args:
+    batch_size: {{ data["batch_size"] }}
+    num_workers: {{ data["workers_per_gpu"] }}
+    ## no_label_replace: -1 
+    ## no_data_replace: 0
+    no_label_replace: {{ label_nodata }}
+    no_data_replace: {{ image_nodata_replace }}
+    # constant_scale: {{ constant_multiply }}
+    dataset_bands:
+      {{ bands | to_yaml | indent(6) }}
+    output_bands:
+      {{ output_bands | to_yaml | indent(6) }}
+    rgb_indices:
+      {{ rgb_band_indices | to_yaml | indent(6) }}
+    train_data_root: {{ data_root + train_data_dir }}
+    train_label_data_root: {{ data_root + train_labels_dir }}
+    val_data_root: {{ data_root + val_data_dir }}
+    val_label_data_root: {{ data_root + val_labels_dir }}
+    test_data_root: {{ data_root + test_data_dir }}
+    test_label_data_root: {{ data_root + test_labels_dir }}
+    {% if train_split_path -%}
+    train_split: {{ data_root + train_split_path }}
+    {% endif -%}
+    {% if test_split_path -%}
+    test_split: {{ data_root + test_split_path }}
+    {% endif -%}
+    {% if val_split_path -%}
+    val_split: {{ data_root + val_split_path }}
+    {% endif -%}
+    {% if img_suffix -%}
+    img_grep: "{{ img_suffix }}"
+    {% endif -%}
+    {% if seg_map_suffix -%}
+    label_grep: "{{ seg_map_suffix }}"
+    {% endif -%}
+    means: 
+      {{ norm_means | to_yaml | indent(6) }}
+    stds: 
+      {{ norm_stds | to_yaml | indent(6) }}
+    {% if data["expand_temporal_dimension"] is not none -%}
+    expand_temporal_dimension: data["expand_temporal_dimension"]
+    {% endif -%}
+    {% if data["drop_last"] is not none -%}
+    drop_last: data["drop_last"]
+    {% endif -%}
+    # # ---- train_transform if ----
+    # {% if data["train_transform"] -%}
+    # train_transform:
+    # {% for transform in data["train_transform"] %}
+    # - class_path: trasnsform["class_path"]
+    #   init_args:
+    #     {% if trasnsform["height"] is not none -%}
+    #     height: trasnsform["height"]
+    #     {% endif -%}
+    #     {% if trasnsform["width"] is not none -%}
+    #     width: trasnsform["width"]
+    #     {% endif -%}
+    #     {% if trasnsform["always_apply"] is not none -%}
+    #     always_apply: trasnsform["always_apply"]
+    #     {% endif -%}
+    #     {% if trasnsform["transpose_mask"] is not none -%}
+    #     transpose_mask: trasnsform["transpose_mask"]
+    #     {% endif -%}
+    #     {% if trasnsform["p"] is not none -%}
+    #     p: trasnsform["p"]
+    #     {% endif -%}
+    # {% endfor %}
+    # {% endif -%}
+    # # ---- train_transform endif ----
+    train_transform:
+      - class_path: albumentations.HorizontalFlip
+        init_args:
+          p: 0.5      
+      - class_path: albumentations.Rotate
+        init_args:
+          limit: 30
+          border_mode: 0 # cv2.BORDER_CONSTANT
+          value: 0
+          # mask_value: 1
+          p: 0.5
+      - class_path: ToTensorV2
+# ckpt_path: {{ pretrained_weights_path }}
+### Model configuration
+model:
+  class_path: terratorch.tasks.PixelwiseRegressionTask 
+  init_args:
+    model_args:
+      decoder: UperNetDecoder
+      pretrained: true
+      backbone: {{ pretrained_model_name }}
+      backbone_pretrained_cfg_overlay:
+        file: {{ pretrained_weights_path }}
+      # backbone_temporal_encoding: true
+      # backbone_pretrain_img_size: {{ tile_size }}
+      # backbone_patch_size: {{ patch_size }}
+      # backbone_window_size: 8
+      backbone_drop_path_rate: 0.3
+      ## decoder_channels: 32
+      decoder_channels: {{ model["decode_head"]["channels"] }}
+      ## in_channels: {{ output_bands | length }}
+      in_channels: {{ data["bands"]|length }}
+      bands:
+        {{ output_bands | to_yaml | indent(8) }}
+      num_frames: {{ num_frames }}
+      head_dropout: 0.16194593880230534
+      # decoder_num_convs: 4
+      # head_channel_list:
+      #   {{ head_channel_list | to_yaml | indent(10) }}
+      head_final_act: torch.nn.ReLU
+      head_learned_upscale_layers: 2
+    plot_on_val: {{ runner["plot_on_val"] }}
+
+    ## loss: rmse
+    loss: {{ model["decode_head"]["loss_decode"]["type"] }}
+    # aux_heads:
+    #   - name: aux_head
+    #     decoder: FCNDecoder
+    #     decoder_args:
+    #       decoder_channels: 256
+    #       decoder_in_index: -1
+    #       decoder_num_convs: 2
+    #       head_dropout: 0.1
+    #       # head_channel_list:
+    #       #   - 64
+    # aux_loss:
+    #   aux_head: 1.0
+    ignore_index: {{ ignore_index }}
+    freeze_backbone: {{ model["frozen_backbone"] | lower }}
+    freeze_decoder: false
+    model_factory: PrithviModelFactory
+    # uncomment this block for tiled inference
+    # tiled_inference_parameters:
+    #   h_crop: {{ tile_size }}
+    #   h_stride: {{ tile_size - 16 * 2 }}
+    #   w_crop: {{ tile_size }}
+    #   w_stride: {{ tile_size - 16 * 2 }}
+    #   average_patches: false
+optimizer:
+  class_path: {{ 'torch.optim.' + optimizer["type"] }}
+  init_args:
+    # ---- Optimizer start if ----
+    {% if optimizer["lr"] -%}
+    lr: {{ optimizer["lr"] | float  }}
+    {% else %}
+    lr: 0.00031406904191973693
+    {% endif -%}
+    {% if optimizer["weight_decay"] -%}
+    weight_decay: {{ optimizer["weight_decay"] | float }}
+    {% else %}
+    weight_decay: 0.03283253068408954
+    {% endif -%}
+    # ---- Optimizer stop if ----
+lr_scheduler:
+  class_path: ReduceLROnPlateau
+  init_args:
+    monitor: val/loss

@@ -1,0 +1,172 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+[project]
+name = "geostudio-core"
+version = "2.0.0"
+description = "GEOStudio (Geospatial Exploration and Orchestration Studio) — an open-source toolkit for building, analyzing, and orchestrating geospatial foundation model workflows."
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { email = "geostudio@ibm.com"},
+  { name = "Brian Ogolla"},
+  { name = "Blair Edwards"},
+  { name = "Charles Wachira"},
+  { name = "Catherine Wanjiru"},
+  { name = "Fred Otieno"},
+  { name = "Beldine Moturi"},
+  { name = "Reginald Eugene Bryant"},
+  { name = "Rosie Lickorish"},
+  { name = "Tong Luo"},
+]
+keywords = [
+    "geospatial",
+    "GIS",
+    "remote sensing",
+    "spatial computing",
+    "earth observation",
+    "workflow automation",
+    "open science"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent"
+]
+
+dependencies = [
+    "aiobotocore>=2.24.0",
+    "alchemy-logging>=1.5.0",
+    "alembic>=1.16.4",
+    "asyncer>=0.0.8",
+    "backoff>=2.2.1",
+    "boto3>=1.39.11",
+    "boto3-stubs[essential]>=1.40.8",
+    "botocore>=1.39.11",
+    "cachetools>=5.5.2",
+    "celery[redis]>=5.5.3",
+    "cheap-repr>=0.5.2",
+    "cryptography>=45.0.6",
+    "fastapi>=0.116.1",
+    "fastapi-sqlalchemy>=0.2.1",
+    "flower>=2.0.1",
+    "httpcore>=1.0.9",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "jsonschema>=4.25.0",
+    "kubernetes>=33.1.0",
+    "mlflow>=3.2.0",
+    "pg8000>=1.31.4",
+    "prometheus-client>=0.22.1",
+    "prometheus-fastapi-instrumentator>=7.0.0",
+    "pydantic>=2.11.7",
+    "pydantic-collections>=0.6.0",
+    "pydantic-core>=2.23.4",
+    "pydantic-settings>=2.10.1",
+    "python-dotenv>=1.1.1",
+    "python-multipart>=0.0.20",
+    "rasterio>=1.4.3",
+    "redis>=5.2.1",
+    "remotezip>=0.12.3",
+    "requests>=2.32.4",
+    "setuptools>=80.9.0",
+    "shortuuid>=1.0.13",
+    "sqlalchemy-utils>=0.41.2",
+    "sse-starlette>=3.0.2",
+    "structlog>=25.4.0",
+    "terrakit==0.1.0",
+    "typer>=0.20.0",
+    "urllib3>=2.5.0",
+    "uvicorn[standard]>=0.35.0",
+]
+
+[project.scripts]
+geostudio-core = "gfmstudio.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/terrastackai/geospatial-studio-core"
+Documentation = "https://terrastackai.github.io/geospatial-studio"
+Source = "https://github.com/terrastackai/geospatial-studio-core"
+Issues = "https://github.com/terrastackai/geospatial-studio-core/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gfmstudio"]
+
+[dependency-groups]
+dev = [
+    "black>=24.0.0",
+    "flake8>=7.0.0",
+    "hunter>=3.7.0",
+    "ipython>=8.18,<9.0.0",
+    "pre-commit>=3.0.0",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "rich>=14.0.0",
+    "ruff>=0.8.0",
+]
+
+[tool.black]
+target-version = ["py311"]
+
+[tool.flake8]
+extend-ignore = "E203"
+max-line-length = 120
+exclude = [
+  ".git",
+  "__pycache__",
+  "docs/source/conf.py",
+  "app/alembic/versions",
+  "old",
+  "build",
+  "dist",
+  "venv",
+]
+max-complexity = 10
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E203"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.isort]
+known-first-party = ["geostudio", "gfmstudio"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.deptry]
+ignore = ["__main__"]
+
+[tool.coverage.run]
+source = ["gfmstudio"]
+omit = ["*/tests/*", "*/alembic/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

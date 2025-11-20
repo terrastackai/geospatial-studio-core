@@ -1,0 +1,80 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: onboarding-v1-pipeline-dataset-id
+spec:
+  template:
+    spec:
+      containers:
+      - name: onboarding-v1-pipeline-dataset-id
+        image: us.icr.io/gfmaas/claimed-curated-upload:0.45
+        env:
+        - name: LOGLEVEL
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v1-pipeline-params-dataset-id
+              key: LOGLEVEL
+        - name: BANDS
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v1-pipeline-params-dataset-id
+              key: BANDS
+        - name: LABEL_SUFFIX
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v1-pipeline-params-dataset-id
+              key: LABEL_SUFFIX
+        - name: TRAINING_DATA_SUFFIX
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v1-pipeline-params-dataset-id
+              key: TRAINING_DATA_SUFFIX
+        - name: DATASET_ID
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v1-pipeline-params-dataset-id
+              key: DATASET_ID
+        - name: DATASET_URL
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v1-pipeline-params-dataset-id
+              key: DATASET_URL
+        - name: OBJECT_STORAGE_SEC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gfm-datasetfactory-cos-access
+              key: secret-key
+        - name: OBJECT_STORAGE_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: gfm-datasetfactory-cos-access
+              key: access-key
+        - name: DF_APIKEY
+          valueFrom:
+            secretKeyRef:
+              name: gfm-datasetfactory-apikey
+              key: DF_APIKEY
+        - name: BUCKET_NAME
+          value: "geoft-service-datasets"
+        - name: OBJECT_STORAGE_REGION
+          value: "us-south"
+        - name: OBJECT_STORAGE_ENDPOINT
+          value: "http://s3.us-south.cloud-object-storage.appdomain.cloud"
+        command: ["python", "./claimed_curated_upload.py"]
+        args:
+        - "log_level=$(LOGLEVEL)"
+        - "dataset_url=$(DATASET_URL)"
+        - "training_data_suffix=$(TRAINING_DATA_SUFFIX)"
+        - "label_suffix=$(LABEL_SUFFIX)"
+        - "bands=$(BANDS)"
+        - "dataset_id=$(DATASET_ID)"
+        - "LOGLEVEL=$(LOGLEVEL)"
+        - "OBJECT_STORAGE_ENDPOINT=$(OBJECT_STORAGE_ENDPOINT)"
+        - "OBJECT_STORAGE_REGION=$(OBJECT_STORAGE_REGION)"
+        - "DATA_BUCKET=$(BUCKET_NAME)"
+      restartPolicy: Never
+  backoffLimit: 4

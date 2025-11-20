@@ -1,0 +1,104 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: onboarding-v2-pipeline-dataset-id
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: IMAGE_PULL_SECRET
+      containers:
+      - name: onboarding-v2-pipeline-dataset-id
+        image: DATASET_PIPELINE_IMAGE
+        volumeMounts:
+          - name: mount-data
+            mountPath: /data
+        env:
+        - name: LOGLEVEL
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: LOGLEVEL
+        - name: DATA_SOURCES
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: DATA_SOURCES
+        - name: LABEL_SUFFIX
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: LABEL_SUFFIX
+        - name: DATASET_ID
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: DATASET_ID
+        - name: DATASET_URL
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: DATASET_URL
+        - name: ONBOARDING_OPTIONS
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: ONBOARDING_OPTIONS
+        - name: OBJECT_STORAGE_SEC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: OBJECT_STORAGE_SEC_KEY
+        - name: OBJECT_STORAGE_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: OBJECT_STORAGE_KEY_ID
+        - name: DF_APIKEY
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: DF_APIKEY
+        - name: DF_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: DF_WEBHOOK_URL
+        - name: BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: BUCKET_NAME
+        - name: OBJECT_STORAGE_REGION
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: OBJECT_STORAGE_REGION
+        - name: OBJECT_STORAGE_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: dataset-onboarding-v2-pipeline-params-dataset-id
+              key: OBJECT_STORAGE_ENDPOINT
+        command: ["python", "./claimed_curated_upload_v2.py"]
+        args:
+        - "log_level=$(LOGLEVEL)"
+        - "data_sources=$(DATA_SOURCES)"
+        - "label_suffix=$(LABEL_SUFFIX)"
+        - "dataset_id=$(DATASET_ID)"
+        - "onboarding_options=$(ONBOARDING_OPTIONS)"
+        - "LOGLEVEL=$(LOGLEVEL)"
+        - "OBJECT_STORAGE_ENDPOINT=$(OBJECT_STORAGE_ENDPOINT)"
+        - "OBJECT_STORAGE_REGION=$(OBJECT_STORAGE_REGION)"
+        - "DATA_BUCKET=$(BUCKET_NAME)"
+        - "dataset_url=$(DATASET_URL)"
+        - "df_api_route=$(DF_WEBHOOK_URL)"
+      volumes:
+        - name: mount-data
+          persistentVolumeClaim:
+            claimName: DATA_PVC_NAME
+      restartPolicy: Never
+  backoffLimit: 4

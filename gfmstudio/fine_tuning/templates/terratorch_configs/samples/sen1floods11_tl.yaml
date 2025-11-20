@@ -1,0 +1,155 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+seed_everything: 0
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: 16-mixed
+  logger: 
+    class_path: lightning.pytorch.loggers.mlflow.MLFlowLogger
+    init_args:
+      experiment_name: prithvi-eo-v2
+      run_name: prithvi-eo2-sen1flood11-<prithvi_model>
+      tracking_uri: "https://gfm-mlflow-internal-nasageospatial-dev.cash.sl.cloud9.ibm.com"
+      save_dir: /working/mlflow
+      # True # will use tensorboardlogger
+  callbacks:
+    - class_path: RichProgressBar
+    - class_path: LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    # - class_path: lightning.pytorch.callbacks.EarlyStopping
+    #   init_args:
+    #     patience: 20
+    #     monitor: val/loss
+  max_epochs: 10
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 10
+  enable_checkpointing: True
+  default_root_dir: /working/
+
+data:
+  class_path: terratorch.datamodules.GenericNonGeoSegmentationDataModule
+  init_args:
+    batch_size: 4
+    num_workers: 2
+    no_label_replace: -1
+    no_data_replace: 0
+    constant_scale: 1.0
+    dataset_bands:
+      - '2'
+      - '1'
+      - '0'
+      - '3'
+      - '4'
+      - '5'
+
+    output_bands:
+      - '2'
+      - '1'
+      - '0'
+      - '3'
+      - '4'
+      - '5'
+
+    rgb_indices:
+      - 2
+      - 1
+      - 0
+
+    # Data with temporal and location maybe S2LA?
+    train_data_root: /data//geodata-dbce399c854511efb3260a580a830dad/training_data/
+    train_label_data_root: /data//geodata-dbce399c854511efb3260a580a830dad/labels/
+    val_data_root: /data/geodata-dbce399c854511efb3260a580a830dad/training_data/
+    val_label_data_root: /data/geodata-dbce399c854511efb3260a580a830dad/labels/
+    test_data_root: /data/geodata-dbce399c854511efb3260a580a830dad/training_data/
+    test_label_data_root: /data/geodata-dbce399c854511efb3260a580a830dad/labels/
+    train_split: /data/geodata-dbce399c854511efb3260a580a830dad/split_files/train_data.txt
+    test_split: /data/geodata-dbce399c854511efb3260a580a830dad/split_files/test_data.txt
+    val_split: /data/geodata-dbce399c854511efb3260a580a830dad/split_files/val_data.txt
+    img_grep: "*_S2GeodnHand.tif"
+    label_grep: "*_LabelHand.tif"
+    means: 
+      - 0.12520133
+      - 0.13471393
+      - 0.107582
+      - 0.3236181
+      - 0.2341743
+      - 0.15878009
+
+    stds: 
+      - 0.07323416
+      - 0.06783548
+      - 0.07145836
+      - 0.09489725
+      - 0.07938496
+      - 0.07089546
+
+    num_classes: 2
+    test_transform:
+      - class_path: ToTensorV2
+
+# Most changes are to happen in the model section
+model:
+  class_path: terratorch.tasks.SemanticSegmentationTask
+  init_args:
+    model_factory: EncoderDecoderFactory
+    model_args:
+      backbone_pretrained: false
+      backbone: prithvi_eo_v2_300_tl # prithvi_vit_100, prithvi_eo_v2_300, prithvi_eo_v2_300_tl, prithvi_eo_v2_600, prithvi_eo_v2_600_tl
+      backbone_img_size: 512
+      backbone_coords_embedding: []
+      backbone_bands:
+        - COASTAL AEROSOL
+        - BLUE
+        - GREEN
+        - RED
+        - RED EDGE 1
+        - RED EDGE 2
+        - RED EDGE 3
+        - NIR BROAD
+        - NIR NARROW
+        - CIRRUS
+        - SWIR 1
+        - SWIR 2
+      necks:
+        - name: SelectIndices
+          # indices: [2, 5, 8, 11] # 100M models
+          indices: [5, 11, 17, 23] # 300M models
+          # indices: [7, 15, 23, 31] # 600M models . These require more cuda memory
+        # Different necks are available to be provided based on the task
+        - name: ReshapeTokensToImage
+        - name: LearnedInterpolateToPyramidal
+      decoder: UNetDecoder
+      decoder_channels: [512, 256, 128, 64]
+      head_dropout: 0.1
+      num_classes: 2
+
+    loss: dice
+    ignore_index: -1
+    freeze_backbone: false
+    freeze_decoder: false
+    plot_on_val: 0
+    tiled_inference_parameters: 
+      h_crop: 512
+      h_stride: 448
+      w_crop: 512
+      w_stride: 448
+      average_patches: True
+
+optimizer:
+  class_path: torch.optim.AdamW
+  init_args:
+    lr: 5.0e-5
+    weight_decay: 0.1
+
+lr_scheduler:
+  class_path: ReduceLROnPlateau
+  init_args:
+    monitor: val/loss
+    factor: 0.5
+    patience: 4

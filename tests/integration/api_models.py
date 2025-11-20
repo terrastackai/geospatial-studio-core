@@ -1,0 +1,41 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+"""
+Example payloads for integration tests.
+Each payload is a Python dict, instead of JSON files.
+"""
+
+# Base valid model payload
+SANDBOX_MODEL = {
+    "display_name": "add-layer-sandbox-model",
+    "description": (
+        "Early-access test model made available for demonstration or limited user "
+        "evaluation. These models may include incomplete features or evolving "
+        "performance characteristics and are intended for feedback and experimentation "
+        "before full deployment."
+    ),
+    "pipeline_steps": [
+        {"status": "READY", "process_id": "url-connector", "step_number": 0},
+        {"status": "WAITING", "process_id": "push-to-geoserver", "step_number": 1},
+    ],
+    "geoserver_push": [],
+    "model_input_data_spec": [
+        {
+            "bands": [],
+            "connector": "sentinelhub",
+            "collection": "hls_s30",
+            "file_suffix": "S2Hand",
+        }
+    ],
+    "postprocessing_options": {},
+    "sharable": False,
+    "model_onboarding_config": {
+        "fine_tuned_model_id": "",
+        "model_configs_url": "",
+        "model_checkpoint_url": "",
+    },
+    "latest": True,
+    "version": 1.0,
+}

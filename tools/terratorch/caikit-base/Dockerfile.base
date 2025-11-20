@@ -1,0 +1,68 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+###############################################################################
+# This Docker file defines layers with:
+# - Runtime dependencies installed for local development
+#
+# It's meant to be run from a variety of base OS + Python install combinations, so no OS-specific
+# instructions should go in here. (apt-get, dnf, yum...)
+################################################################################
+
+## Base layer ##################################################################
+ARG PYTHON_TAG=py311 
+ARG OS=ubi8
+ARG BASE_IMAGE_TAG=latest
+ARG SOURCE_DIR="."
+ARG LIB_NAME=""
+
+FROM registry.access.redhat.com/${OS}/ubi-minimal:${BASE_IMAGE_TAG} as base
+
+# Set default working dir
+WORKDIR /app
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Install system and runtime dependencies with minimal additional packages
+RUN true \
+    && microdnf -y update \
+    && microdnf install -y mesa-libGL gcc openssl-libs \
+    && microdnf clean all
+
+## Conda Environment Layer
+FROM base as forge_env
+
+# Define the Miniforge installation path
+ENV MAMBA_ROOT_PREFIX=/opt/miniforge
+
+# Install Miniforge (faster Conda alternative)
+RUN curl -LfsSo /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+    && chmod +x /tmp/Miniforge3.sh \
+    && bash /tmp/Miniforge3.sh -bf -p $MAMBA_ROOT_PREFIX \
+    && rm -f /tmp/Miniforge3.sh
+
+ENV PATH=$MAMBA_ROOT_PREFIX/bin:$PATH
+
+RUN mamba install -y -c conda-forge \
+    python=3.11 libspatialindex gdal libgdal libgdal-arrow-parquet "urllib3<2" cudatoolkit=11.8 h5netcdf \
+    && mamba clean -afy
+
+## Development Layer ###########################################################
+FROM base as runtime_dependencies
+
+# Copy in the GeoSpatial environment
+COPY --from=forge_env /opt/miniforge/ /opt/miniforge/
+ENV PATH=/opt/miniforge/bin:$PATH
+
+## Build Layer #################################################################
+FROM runtime_dependencies as build
+ARG PYTHON_TAG
+ARG COMPONENT_VERSION
+ARG SOURCE_DIR
+
+# Add grpc-ecosystem health probe
+ARG GRPC_HEALTH_PROBE_VERSION=v0.4.37
+RUN curl -LfsSo /usr/local/bin/grpc_health_probe \
+    "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64" \
+    && chmod +x /usr/local/bin/grpc_health_probe

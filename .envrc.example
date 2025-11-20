@@ -1,0 +1,13 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+# If running different tilt instances with ~/tasks
+# export TILT_PORT=10360
+export IBMCLOUD_HOME=$PWD
+export DOCKER_REGISTRY_USERNAME=iamapikey
+export DOCKER_REGISTRY_PASSWORD=<ibmcloud-manage-iam-keys>
+export DOCKER_REGISTRY_DOMAIN=us.icr.io
+set -a
+. .env
+set +a

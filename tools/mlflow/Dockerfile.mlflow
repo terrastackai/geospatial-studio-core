@@ -1,0 +1,8 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+FROM ghcr.io/mlflow/mlflow:latest
+
+RUN pip install mlflow --upgrade
+RUN pip install psycopg2-binary

@@ -1,0 +1,347 @@
+{
+  "$uri": "https://ibm.com/watsonx.ai.geospatial.finetune.segmentation.clay.json",
+  "type": "object",
+  "title": "Finetune",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "data": {
+      "type": "object",
+      "default": {
+        "batch_size": 4,
+        "constant_multiply": 1,
+        "workers_per_gpu": 2
+      },
+      "properties": {
+        "batch_size": {
+          "type": "int",
+          "default": 4,
+          "description": "Batch size",
+          "studio_name": "Batch size"
+        },
+        "constant_multiply": {
+          "type": "float",
+          "default": 1,
+          "description": "Constant Scale",
+          "studio_name": "Constant Scale"
+        },
+        "workers_per_gpu": {
+          "studio_name": "Workers per GPU",
+          "description": "Workers per GPU",
+          "type": "int",
+          "default": 2
+        }
+      },
+      "studio_name": "Data loading"
+    },
+    "model": {
+      "type": "object",
+      "default": {
+        "decode_head": {
+          "channels": 256,
+          "num_convs": 4,
+          "decoder": "UNetDecoder",
+          "loss_decode": {
+            "type": "CrossEntropyLoss",
+            "avg_non_ignore": true
+          }
+        },
+        "frozen_backbone": false,
+        "tiled_inference_parameters": {
+          "h_crop": 224,
+          "h_stride": 196,
+          "w_crop": 224,
+          "w_stride": 196,
+          "average_patches": false
+        },
+        "backbone_img_size": 512
+      },
+      "properties": {
+        "decode_head": {
+          "type": "object",
+          "default": {
+            "channels": 256,
+            "num_convs": 4,
+            "decoder": "UperNetDecoder",
+            "loss_decode": {
+              "type": "CrossEntropyLoss",
+              "avg_non_ignore": true
+            }
+          },
+          "properties": {
+            "channels": {
+              "type": "int",
+              "default": 256,
+              "description": "Channels at each block of the decode head, except the final one",
+              "studio_name": "Channels"
+            },
+            "num_convs": {
+              "type": "int",
+              "default": 4,
+              "description": "Number of convolutional blocks in the head (except the final one)",
+              "studio_name": "Blocks"
+            },
+            "decoder": {
+              "enum": ["UperNetDecoder", "UNetDecoder"],
+              "type": "string",
+              "default": "Fixed",
+              "description": "Decoder type",
+              "studio_name": "Decoder type"
+            },
+            "loss_decode": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "enum": ["CrossEntropyLoss"],
+                  "type": "string",
+                  "default": "CrossEntropyLoss",
+                  "description": "Type of loss function",
+                  "studio_name": "Loss function"
+                },
+                "avg_non_ignore": {
+                  "type": "bool",
+                  "default": true,
+                  "description": "The loss is only averaged over non-ignored targets (ignored targets are usually where labels are missing in the dataset) if this is True"
+                }
+              },
+              "description": "Loss function to be used",
+              "studio_name": "Loss"
+            }
+          },
+          "description": "Architecture of the decode head",
+          "studio_name": "Head"
+        },
+        "auxiliary_head": {
+          "type": "object",
+          "default": {},
+          "properties": {
+            "decoder": {
+              "type": "string",
+              "default": "FCNDecoder",
+              "description": "Decoder function to use",
+              "studio_name": "Decoder"
+            },
+            "channels": {
+              "type": "int",
+              "default": 256,
+              "description": "Channels at each block of the decode head, except the final one",
+              "studio_name": "Channels"
+            },
+            "num_convs": {
+              "type": "int",
+              "default": 2,
+              "description": "Number of convolutional blocks in the head (except the final one)",
+              "studio_name": "Blocks"
+            },
+            "in_index": {
+              "type": "int",
+              "default": -1,
+              "description": "Index of the input list to take. Defaults to -1",
+              "studio_name": "In index"
+            },
+            "dropout": {
+              "type": "int",
+              "default": 0,
+              "description": "Dropout value to apply. Defaults to 0",
+              "studio_name": "Dropout"
+            },
+            "loss_decode": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "enum": ["CrossEntropyLoss"],
+                  "type": "string",
+                  "default": "CrossEntropyLoss",
+                  "description": "Type of loss function",
+                  "studio_name": "Loss function"
+                },
+                "loss_weight": {
+                  "type": "float",
+                  "default": 1,
+                  "description": "Multiplicative weight of the loss of the auxiliary head in the loss. The loss is calculated as aux_head_weight * aux_head_loss + decode_head_loss",
+                  "studio_name": "Loss weight"
+                },
+                "avg_non_ignore": {
+                  "type": "bool",
+                  "default": true,
+                  "description": "The loss is only averaged over non-ignored targets (ignored targets are usually where labels are missing in the dataset) if this is True"
+                }
+              },
+              "description": "Loss function to be used",
+              "studio_name": "Loss"
+            }
+          },
+          "description": "Architecture of the auxiliary head"
+        },
+        "frozen_backbone": {
+          "type": "bool",
+          "default": false,
+          "description": "Freeze the weights of the backbone when set to True",
+          "studio_name": "Freeze backbone"
+        },
+        "tiled_inference_parameters": {
+          "type": "object",
+          "default": {
+            "h_crop": 224,
+            "h_stride": 196,
+            "w_crop": 224,
+            "w_stride": 196,
+            "average_patches": false
+          },
+          "properties": {
+            "h_crop": {
+              "type": "int",
+              "default": 224,
+              "description": "h_crop values for tilling images",
+              "studio_name": "h_crop"
+            },
+            "h_stride": {
+              "type": "int",
+              "default": 196,
+              "description": "h_stride values for tilling images",
+              "studio_name": "h_stride"
+            },
+            "w_crop": {
+              "type": "int",
+              "default": 224,
+              "description": "w_crop values for tilling images",
+              "studio_name": "w_crop"
+            },
+            "w_stride": {
+              "type": "int",
+              "default": 196,
+              "description": "w_stride values for tilling images",
+              "studio_name": "w_stride"
+            },
+            "average_patches": {
+              "type": "bool",
+              "default": false,
+              "description": "Whether to use average_patches",
+              "studio_name": "average_patches"
+            }
+          }
+        },
+        "backbone_img_size": {
+          "type": "int",
+          "default": 512,
+          "description": "Backbone image size for specific models i.e Clay",
+          "studio_name": "Backbone image size"
+        }
+      },
+      "description": "Model architecture definition",
+      "studio_name": "Architecture"
+    },
+    "runner": {
+      "type": "object",
+      "default": {
+        "max_epochs": 10,
+        "early_stopping_patience": 20,
+        "early_stopping_monitor": "val/loss"
+      },
+      "properties": {
+        "max_epochs": {
+          "type": "int",
+          "default": 10,
+          "description": "Training epochs",
+          "studio_name": "Training epochs"
+        },
+        "early_stopping_patience": {
+          "type": "int",
+          "default": 20,
+          "description": "Early stopping patience",
+          "studio_name": "Early stopping patience"
+        },
+        "early_stopping_monitor": {
+          "type": "string",
+          "default": "val/loss",
+          "description": "Monitoring value to determine early stopping",
+          "studio_name": "Early stopping monitor"
+        }
+      },
+      "studio_name": "Runner"
+    },
+    "lr_config": {
+      "type": "object",
+      "default": {
+        "policy": "Fixed"
+      },
+      "required": ["policy"],
+      "properties": {
+        "policy": {
+          "enum": ["Fixed", "CosineAnnealing"],
+          "type": "string",
+          "default": "Fixed",
+          "description": "Policy type",
+          "studio_name": "Policy type"
+        },
+        "warmup_iters": {
+          "type": "int",
+          "default": 0,
+          "description": "LR warmup iterations. Valid for some policies",
+          "studio_name": "Learning rate warmup iterations"
+        },
+        "warmup_ratio": {
+          "type": "float",
+          "default": 1,
+          "description": "Initial lr at warmup will be learning_rate * warmup_ratio",
+          "studio_name": "LR warmup initialization ratio"
+        }
+      },
+      "description": "Learning rate policy",
+      "studio_name": "Learning rate policy"
+    },
+    "optimizer": {
+      "type": "object",
+      "default": {
+        "lr": 0.00006,
+        "type": "Adam"
+      },
+      "properties": {
+        "lr": {
+          "type": "float",
+          "default": 0.00006,
+          "description": "Learning rate",
+          "studio_name": "Learning rate"
+        },
+        "type": {
+          "enum": ["Adam", "SGD", "AdamW", "RMSProp"],
+          "default": "Adam",
+          "description": "Optimizer to be used",
+          "studio_name": "Optimizer type"
+        },
+        "weight_decay": {
+          "type": "float",
+          "default": 0,
+          "description": "L2 weight regularization (weight decay)",
+          "studio_name": "L2 regularization weight"
+        }
+      },
+      "description": "Optimizer",
+      "studio_name": "Optimizer"
+    },
+    "dataset_id": {
+      "type": "string",
+      "description": "ID of dataset to use for this finetuning",
+      "studio_name": "Dataset"
+    },
+    "evaluation": {
+      "type": "object",
+      "default": {
+        "interval": 1
+      },
+      "properties": {
+        "interval": {
+          "type": "int",
+          "default": 1,
+          "description": "Frequency of epochs with which to perform validation",
+          "studio_name": "Epoch interval"
+        }
+      },
+      "studio_name": "Validation"
+    },
+    "backbone_model_id": {
+      "type": "string",
+      "description": "ID of the pretrained backbone"
+    }
+  },
+  "description": "A request sent to the finetuning service to start a finetune task for segmentation"
+}

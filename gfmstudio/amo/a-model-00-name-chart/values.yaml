@@ -1,0 +1,27 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+# Custom values for main-chart
+modelFramework: "model-framework"
+modelID: "model-id"
+namespace: "namespace"
+resourceName: "resourceName"
+deployImage: deployImage
+serviceAccountName: serviceAccount
+inferenceSharedPvc: inference-shared-pvc
+imagePullSecretName: imagePullSecretName
+cosBucketLocation: cosBucketLocation
+cosBucketName: cosBucketName
+cosEndpointURL: cosEndpointURL
+cosCredentialsSecretName: cosCredentialsSecretName
+gatewayURL: gatewayURL
+gfmaasApiKeySecretName: gfmaasApiKeySecretName
+gfmaasApiCredKey: gfmaasApiCredKey
+configureInferenceToleration: configureInferenceToleration
+useCustomTemplates: true
+ingress:
+  enabled: false
+service:
+  type: ClusterIP
+  port: 80

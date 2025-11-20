@@ -1,0 +1,59 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+## Base layer ##################################################################
+ARG PYTHON_TAG=3.11 
+ARG OS=ubi8
+ARG BASE_IMAGE_TAG=latest
+
+
+FROM registry.access.redhat.com/${OS}/ubi-minimal:${BASE_IMAGE_TAG} as base
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Install system and runtime dependencies with minimal additional packages
+# hadolint ignore=DL3041
+RUN true \
+    && microdnf -y update \
+    && microdnf install -y mesa-libGL gcc openssl-libs \
+    && microdnf clean all \
+    && rm -rf /var/cache/*
+
+## Conda Environment Layer
+FROM base as forge_env
+
+# Define the Miniforge installation path
+ENV MAMBA_ROOT_PREFIX=/opt/miniforge \
+    PATH=/opt/miniforge/bin:$PATH
+
+# Install Miniforge (faster Conda alternative)
+RUN curl -fsSL -o /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+    && chmod +x /tmp/Miniforge3.sh \
+    && bash /tmp/Miniforge3.sh -bf -p $MAMBA_ROOT_PREFIX \
+    && rm -f /tmp/Miniforge3.sh
+
+ENV PATH=$MAMBA_ROOT_PREFIX/bin:$PATH
+
+RUN mamba install -y -c conda-forge \
+    python=3.11 libspatialindex gdal libgdal libgdal-arrow-parquet "urllib3<2" cudatoolkit=11.8 h5netcdf \
+    && mamba clean -afy
+
+## Development Layer ###########################################################
+
+WORKDIR /app
+
+# hadolint ignore=DL3013,DL3041
+RUN microdnf install -y git \
+    && pip install --no-cache-dir \
+    git+https://github.com/IBM/terratorch.git \
+    git+https://github.com/IBM/terratorch-iterate.git \
+    && rm -rf /root/.cache/pip
+
+# hadolint ignore=DL3059
+RUN mkdir -p  /data/output \
+    && chmod -R 777 /data/output \
+    && chmod -R 777 /app
+
+CMD ["/bin/bash"]

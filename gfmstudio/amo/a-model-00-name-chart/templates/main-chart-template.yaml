@@ -1,0 +1,258 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+{{- if .Values.useCustomTemplates }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amo-{{ .Values.modelID }}-cm
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.modelID }}
+    amo: {{ .Values.modelID }}
+data:
+  MODEL_ID: "{{ .Values.modelID }}"
+  STRICT_RPC_MODE: "false"
+  ACCEPT_LICENSE: "true"
+  LOG_LEVEL: "debug3"
+  ALOG_FORMATTER: "pretty"
+  LOCAL_MODELS_DIR: "/app/models"
+  GFMAAS_API_BASE_URL: {{ .Values.gatewayURL }}
+  TLS_SERVER_KEY: "/app/output/tls/tls.key"
+  TLS_SERVER_CERT: "/app/output/tls/tls.crt"
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: amo-{{ .Values.modelFramework }}-{{ .Values.modelID }}-model-pvc
+  namespace: {{ .Values.namespace }}
+  annotations:
+    ibm.io/region: {{ .Values.cosBucketLocation }}
+    ibm.io/endpoint: {{ .Values.cosEndpointURL }}
+    ibm.io/auto-create-bucket: 'false'
+    ibm.io/auto-delete-bucket: 'false'
+    ibm.io/tls-cipher-suite: default
+    ibm.io/secret-name: {{ .Values.cosCredentialsSecretName }}
+    ibm.io/bucket: {{ .Values.cosBucketName }}
+    ibm.io/object-path: '{{ .Values.modelID }}'
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ibmc-s3fs-cos
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: amo-{{ .Values.modelFramework }}-{{ .Values.modelID }}-output-pvc
+  namespace: {{ .Values.namespace }}
+  annotations:
+    ibm.io/region: {{ .Values.cosBucketLocation }}
+    ibm.io/endpoint: {{ .Values.cosEndpointURL }}
+    ibm.io/auto-create-bucket: 'false'
+    ibm.io/auto-delete-bucket: 'false'
+    ibm.io/tls-cipher-suite: default
+    ibm.io/secret-name: {{ .Values.cosCredentialsSecretName }}
+    ibm.io/bucket: {{ .Values.cosBucketName }}
+    ibm.io/object-path: '{{ .Values.modelID }}/output'
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ibmc-s3fs-cos
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: amo-{{ .Values.modelID }}-svc
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.modelID }}
+    amo: {{ .Values.modelID }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: amo-{{ .Values.modelID }}-auth-tls
+spec:
+  selector:
+    app: {{ .Values.modelID }}
+  type: ClusterIP
+  ports:
+    - name: httpui
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: httpserv
+      protocol: TCP
+      port: 8085
+      targetPort: 8085
+    - name: httpmetrics
+      protocol: TCP
+      port: 8086
+      targetPort: 8086
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: amo-{{ .Values.modelID }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    haproxy.router.openshift.io/timeout: "2700s"
+  labels:
+    app: {{ .Values.modelID }}
+    amo: {{ .Values.modelID }}
+    ingress-router: cash
+spec:
+  port:
+    targetPort: httpui
+  tls:
+    termination: edge
+  to:
+    kind: Service
+    name: amo-{{ .Values.modelID }}-svc
+    weight: 100
+  wildcardPolicy: None
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: amo-{{ .Values.modelID }}-internal
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.modelID }}
+    amo: {{ .Values.modelID }}
+spec:
+  to:
+    kind: Service
+    name: amo-{{ .Values.modelID }}-svc
+    weight: 100
+  port:
+    targetPort: httpui
+  tls:
+    termination: edge
+  wildcardPolicy: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amo-{{ .Values.modelID }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.modelID }}
+    amo: {{ .Values.modelID }}
+    cashDeploymentId: {{ .Values.modelID }}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: {{ .Values.modelID }}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: {{ .Values.modelID }}
+      annotations:
+        prometheus.io/port: "8086"
+        prometheus.io/scrape: "true"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      hostname: gfm-inf-{{ .Values.modelID }}-{{ .Values.resourceName }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecretName }}
+      {{ if eq .Values.configureInferenceToleration "setToleration" }}
+      tolerations:
+        - operator: "Exists"
+      {{ end }}
+      containers:
+      - name: {{ .Values.modelID }}
+        image: {{ .Values.deployImage }}
+        resources:
+          requests:
+            cpu: "6"
+            memory: "16G"
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "12"
+            memory: "32G"
+            nvidia.com/gpu: "1"
+        command: ["/bin/sh"]
+        args:
+          - '-c'
+          - |
+            # Ensure the completed directory exists.
+            mkdir -p /app/output/completed && \
+            # Start app.
+            /entrypoint.sh; /run_with_gateway.sh; tail -f /dev/null
+        env:
+        - name: GFMAAS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.gfmaasApiKeySecretName }}
+              key: {{ .Values.gfmaasApiCredKey }}
+        imagePullPolicy: Always
+        ports:                              
+        - containerPort: 5000
+          protocol: TCP        
+        envFrom:
+          - configMapRef:
+              name: amo-{{ .Values.modelID }}-cm
+        volumeMounts:
+          - name: shared-inference-pvc
+            mountPath: /data
+          - name: model-{{ .Values.modelFramework }}-{{ .Values.modelID }}-config-store  # This should match the volume name below
+            mountPath: "/app/models/{{ .Values.modelID }}"
+          - name: model-{{ .Values.modelFramework }}-{{ .Values.modelID }}-output-store
+            mountPath: /app/output
+          - name: tls-secret
+            mountPath: /app/output/tls
+          - mountPath: /dev/shm
+            name: dshm
+          # - mountPath: /app/shared-data
+          #   name: nasa-shared-storage
+        livenessProbe:
+          exec:
+            command:
+              - python3
+              - '-m'
+              - caikit_health_probe
+              - liveness
+              - start_runtime
+          timeoutSeconds: 1
+          periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+              - python3
+              - /app/readiness_check.py
+          initialDelaySeconds: 15
+          timeoutSeconds: 1
+          periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+      volumes:
+      - name: shared-inference-pvc
+        persistentVolumeClaim:
+          claimName: {{ .Values.inferenceSharedPvc }}
+      - name: model-{{ .Values.modelFramework }}-{{ .Values.modelID }}-config-store
+        persistentVolumeClaim:
+          claimName: amo-{{ .Values.modelFramework }}-{{ .Values.modelID }}-model-pvc
+      - name: model-{{ .Values.modelFramework }}-{{ .Values.modelID }}-output-store
+        persistentVolumeClaim:
+          claimName: amo-{{ .Values.modelFramework }}-{{ .Values.modelID }}-output-pvc
+      - name: tls-secret
+        secret:
+          defaultMode: 420
+          secretName: amo-{{ .Values.modelID }}-auth-tls
+      - emptyDir:
+          medium: Memory
+        name: dshm
+      # - name: nasa-shared-storage
+      #   persistentVolumeClaim:
+      #     claimName: geospatial-shared-data-pvc
+{{- end }}

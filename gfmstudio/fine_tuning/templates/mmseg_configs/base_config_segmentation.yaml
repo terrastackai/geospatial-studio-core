@@ -1,0 +1,316 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+mmseg_geospatial_version: '0.1.1'
+
+find_unused_parameters: false
+_base_:
+  - {{ mmseg_path }}/configs/_base_/default_runtime.py
+
+work_dir: {{ mount_root + 'tune-tasks/' + tune_id + '/' }}
+
+data:
+  samples_per_gpu: {{ data["batch_size"] }}
+  workers_per_gpu: {{ data["workers_per_gpu"] }}
+
+  train:
+    type: GeospatialDataset
+    regression: false
+    CLASSES: 
+      {{ classes | to_yaml | indent(6) }}
+    data_root: {{ data_root + data_id + "/"}}
+    img_dir: {{ train_data_dir }}
+    ann_dir: {{ train_labels_dir }}
+    img_suffix: {{ img_suffix }}
+    ignore_index: {{ ignore_index }}
+    seg_map_suffix: {{ seg_map_suffix }}
+    {% if train_split_path -%}
+    split: {{ train_split_path }}
+    {% endif -%}
+    pipeline:
+      - type: LoadGeospatialImageFromFile
+        to_float32: true
+        nodata: {{ image_nodata }}
+        nodata_replace: {{ image_nodata_replace }}
+      - type: LoadGeospatialAnnotations
+        reduce_zero_label: false
+        nodata: {{ label_nodata }}
+        nodata_replace: {{ ignore_index }}
+        regression: false
+      - type: BandsExtract
+        bands: 
+          {{ data["bands"] | to_yaml | indent(10) }}
+      - type: ConstantMultiply
+        constant: {{ constant_multiply }}
+      - type: RandomFlip
+        prob: {{ data["random_flip"] }}
+      - type: ToTensor
+        keys: 
+          - img
+          - gt_semantic_seg
+      - type: TorchPermute
+        keys: 
+          - img
+        order: 
+          - 2
+          - 0
+          - 1
+      - type: TorchNormalize
+        means: 
+          {{ norm_means | to_yaml | indent(10) }}
+        stds: 
+          {{ norm_stds | to_yaml | indent(10) }}
+      - type: TorchRandomCrop
+        crop_size: 
+          - {{ tile_size }}
+          - {{ tile_size }}
+      - type: Reshape
+        keys: 
+          - img
+        new_shape:
+          - {{ data["bands"]|length }}
+          - {{ num_frames }}
+          - -1
+          - -1
+        look_up:
+          '2': 1
+          '3': 2
+      - type: Reshape
+        keys: 
+          - gt_semantic_seg
+        new_shape: 
+          - 1
+          - {{ tile_size }}
+          - {{ tile_size }}
+      - type: CastTensor
+        keys:
+          - gt_semantic_seg
+        new_type: torch.LongTensor
+      - type: Collect
+        keys:
+          - img
+          - gt_semantic_seg
+  val:
+    type: GeospatialDataset
+    regression: false
+    CLASSES: 
+      {{ classes | to_yaml | indent(6) }}
+    data_root: {{ data_root + data_id + "/"}}
+    img_dir: {{ val_data_dir }}
+    ann_dir: {{ val_labels_dir }}
+    img_suffix: {{ img_suffix }}
+    ignore_index: {{ ignore_index }}
+    seg_map_suffix: {{ seg_map_suffix }}
+    gt_seg_map_loader_cfg: 
+      nodata: {{ label_nodata }}
+      nodata_replace: {{ ignore_index }}
+    {% if val_split_path -%}
+    split: {{ val_split_path }}
+    {% endif -%}
+    pipeline:
+      - type: LoadGeospatialImageFromFile
+        to_float32: true
+        nodata: {{ image_nodata }}
+        nodata_replace: {{ image_nodata_replace }}
+      - type: BandsExtract
+        bands: 
+          {{ data["bands"] | to_yaml | indent(10)}}
+      - type: ConstantMultiply
+        constant: {{ constant_multiply }}
+      - type: ToTensor
+        keys: 
+          - img
+      - type: TorchPermute
+        keys: 
+          - img
+        order: 
+          - 2
+          - 0
+          - 1
+      - type: TorchNormalize
+        means: 
+          {{ norm_means | to_yaml | indent(10) }}
+        stds: 
+          {{ norm_stds | to_yaml | indent(10) }}
+      - type: Reshape
+        keys: 
+          - img
+        new_shape:
+          - {{ data["bands"]|length }}
+          - {{ num_frames }}
+          - -1
+          - -1
+        look_up:
+          '2': 1
+          '3': 2
+      - type: CollectTestList
+        keys:
+          - img
+  test:
+    type: GeospatialDataset
+    regression: false
+    CLASSES: 
+      {{ classes | to_yaml |indent(6) }}
+    data_root: {{ data_root + data_id + "/"}}
+    img_dir: {{ test_data_dir }}
+    ann_dir: {{ test_labels_dir }}
+    img_suffix: {{ img_suffix }}
+    ignore_index: {{ ignore_index }}
+    seg_map_suffix: {{ seg_map_suffix }}
+    gt_seg_map_loader_cfg: 
+      nodata: {{ label_nodata }}
+      nodata_replace: {{ ignore_index }}
+    {% if test_split_path -%}
+    split: {{ test_split_path }}
+    {% endif -%}
+    pipeline:
+      - type: LoadGeospatialImageFromFile
+        to_float32: true
+        nodata: {{ image_nodata }}
+        nodata_replace: {{ image_nodata_replace }}
+      - type: BandsExtract
+        bands: 
+          {{ data["bands"] | to_yaml | indent(10) }}
+      - type: ConstantMultiply
+        constant: {{ constant_multiply }}
+      - type: ToTensor
+        keys: 
+          - img
+      - type: TorchPermute
+        keys: 
+          - img
+        order: 
+          - 2
+          - 0
+          - 1
+      - type: TorchNormalize
+        means: 
+          {{ norm_means | to_yaml | indent(10) }}
+        stds: 
+          {{ norm_stds | to_yaml | indent(10) }}
+      - type: Reshape
+        keys: 
+          - img
+        new_shape:
+          - {{ data["bands"]|length }}
+          - {{ num_frames }}
+          - -1
+          - -1
+        look_up:
+          '2': 1
+          '3': 2
+      - type: CollectTestList
+        keys:
+          - img
+optimizer: 
+  type: {{ optimizer["type"] }}
+  lr: 0.00006
+  weight_decay: {{ optimizer["weight_decay"] }}
+optimizer_config:
+  grad_clip: null
+
+{% if lr_policy == 'cosine' -%}
+lr_config:
+  policy: CosineAnnealing
+  warmup: linear
+  warmup_iters: {{ lr_config["warmup_iters"] }}
+  warmup_ratio: 0.1
+  warmup_by_epoch: false
+  min_lr: 1e-8
+{% else -%}
+lr_config: 
+  policy: Fixed
+{% endif -%}
+log_config:
+  interval: 1
+  hooks:
+    - type: IBMTextLoggerHook
+
+checkpoint_config:
+  by_epoch: true
+  interval: {{ runner["max_epochs"] }}
+  out_dir: {{ mount_root + 'tune-tasks/' + tune_id + '/' }}
+
+evaluation:
+  interval: {{ evaluation["interval"] }}
+  metric: {{ evaluation["metric"] }}
+  save_best: {{ evaluation["metric"] }}
+  by_epoch: true
+
+runner:
+  type: EpochBasedRunner
+  max_epochs: {{ runner["max_epochs"] }}
+
+workflow:
+  -
+    - train
+    - 1
+
+model:
+  type: TemporalEncoderDecoder
+  pretrained: {{ pretrained_weights_path }}
+  regression: false
+  frozen_backbone: {{ model["frozen_backbone"] }}
+  backbone:
+    type: TemporalViTEncoder
+    img_size: {{ tile_size }}
+    patch_size: {{ patch_size }}
+    num_frames: {{ num_frames }}
+    in_chans: {{ data["bands"]|length }}
+    embed_dim: {{ embed_dim }}
+    depth: {{ depth }}
+    num_heads: {{ num_heads}}
+    mlp_ratio: 4.0
+    norm_pix_loss: false
+  neck:
+    type: GeospatialNeck
+    embed_dim: {{ embed_dim }}
+    first_conv_channels: 512
+    num_convs: 4
+    num_convs_per_upscale: 1
+    drop_cls_token: true
+    Hp: {{ tile_size // patch_size }}
+    Wp: {{ tile_size // patch_size }}
+    channel_reduction_factor: 2
+    dropout: 0.
+  decode_head:
+    num_classes: {{ classes|length }}
+    ignore_index: {{ ignore_index }}
+    in_channels: 64
+    type: FCNHead
+    in_index: -1
+    channels: {{ model["decode_head"]["channels"] }}
+    num_convs: {{ model["decode_head"]["num_convs"] }}
+    concat_input: false
+    dropout_ratio: 0.1
+    norm_cfg: 
+      type: BN
+      requires_grad: true
+    align_corners: false
+    loss_decode: {{ model["decode_head"]["loss_decode"] }}
+  {% if model["auxiliary_head"] -%}
+  auxiliary_head:
+    num_classes: {{ classes|length }}
+    ignore_index: {{ ignore_index }}
+    in_channels: 64
+    type: FCNHead
+    in_index: -1
+    channels: {{ model["auxiliary_head"]["channels"] }}
+    num_convs: {{ model["auxiliary_head"]["num_convs"] }}
+    concat_input: false
+    dropout_ratio: 0.1
+    norm_cfg: 
+      type: BN
+      requires_grad: true
+    align_corners: false
+    loss_decode: {{ model["auxiliary_head"]["loss_decode"] }}
+{% endif %}
+  test_cfg:
+    mode: slide
+    stride: 
+      - {{ tile_size // 2}}
+      - {{ tile_size // 2}}
+    crop_size:
+      - {{ tile_size }}
+      - {{ tile_size }}

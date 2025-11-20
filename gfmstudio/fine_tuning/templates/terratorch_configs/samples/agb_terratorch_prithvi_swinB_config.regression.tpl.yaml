@@ -1,0 +1,162 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+# lightning.pytorch==2.1.1
+seed_everything: 42
+
+ModelCheckpoint:
+  dirpath: /geotunes/tune-tasks/${FTUNE_NAME}
+### Trainer configuration
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  # precision: 16-mixed
+  logger:
+    class_path: lightning.pytorch.loggers.mlflow.MLFlowLogger
+    init_args:
+      experiment_name:  "${FTUNE_NAME}"
+      run_name: "Agb studio tune 1"
+      tracking_uri: "https://gfm-mlflow-internal-nasageospatial-dev.cash.sl.cloud9.ibm.com"
+      save_dir: /geotunes/tune-tasks/${FTUNE_NAME}/mlflow
+  callbacks:
+    - class_path: RichProgressBar
+    - class_path: LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    - class_path: EarlyStopping
+      init_args:
+        monitor: val/loss
+        patience: 100
+  max_epochs: 5
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 20
+  enable_checkpointing: true
+  default_root_dir:  /geotunes/tune-tasks/${FTUNE_NAME}
+### Data configuration
+data:
+  class_path: GenericNonGeoPixelwiseRegressionDataModule
+  init_args:
+    batch_size: 64
+    num_workers: 8
+    train_transform:
+      - class_path: albumentations.HorizontalFlip
+        init_args:
+          p: 0.5      
+      - class_path: albumentations.Rotate
+        init_args:
+          limit: 30
+          border_mode: 0 # cv2.BORDER_CONSTANT
+          value: 0
+          # mask_value: 1
+          p: 0.5
+      - class_path: ToTensorV2
+    # Specify all bands which are in the input data. 
+    # -1 are placeholders for bands that are in the data but that we will discard
+    dataset_bands: 
+      - -1
+      - BLUE
+      - GREEN
+      - RED
+      - NIR_NARROW
+      - SWIR_1
+      - SWIR_2
+      - -1
+      - -1
+      - -1
+      - -1
+    output_bands: #Specify the bands which are used from the input data.
+      - BLUE
+      - GREEN
+      - RED
+      - NIR_NARROW
+      - SWIR_1
+      - SWIR_2
+    rgb_indices:
+      - 2
+      - 1
+      - 0
+    # Directory roots to training, validation and test datasplits:
+    # TODO: Get these values from UI
+    train_data_root: /data/Taiga_Ecoregion/train_images/
+    train_label_data_root: /data/Taiga_Ecoregion/train_labels/
+    val_data_root: /data/Taiga_Ecoregion/val_images/
+    val_label_data_root: /data/Taiga_Ecoregion/val_labels/
+    test_data_root: /data/Taiga_Ecoregion/test_images/
+    test_label_data_root: /data/Taiga_Ecoregion/test_labels/
+    means: # Mean value of the training dataset per band
+    - 269.21317128
+    - 496.04999777
+    - 415.65300799
+    - 2255.49617989
+    - 1306.28655902
+    - 713.28022393
+    stds: # Standard deviation of the training dataset per band
+    - 192.77758535
+    - 310.98247912
+    - 373.52770226
+    - 1556.43292923
+    - 907.62213671
+    - 547.3525126
+    # Nodata value in label data 
+    no_label_replace: -1 
+    # Nodata value in the input data
+    no_data_replace: 0
+### Model configuration
+model:
+  class_path: terratorch.tasks.PixelwiseRegressionTask 
+  init_args:
+    model_args:
+      decoder: UperNetDecoder
+      pretrained: false
+      backbone: prithvi_swin_B
+      backbone_pretrained_cfg_overlay:
+        # TODO: Get this value from UI
+        file: /terratorch/gfm_models/prithvi_swin_B/epoch-100-loss-0.0923.pt
+      backbone_drop_path_rate: 0.3
+      decoder_channels: 32
+      in_channels: 6
+      bands:
+        - BLUE
+        - GREEN
+        - RED
+        - NIR_NARROW
+        - SWIR_1
+        - SWIR_2
+      num_frames: 1
+      head_dropout: 0.16194593880230534
+      head_final_act: torch.nn.ReLU
+      head_learned_upscale_layers: 2
+    loss: rmse
+    ignore_index: -1
+    freeze_backbone: false
+    freeze_decoder: false
+    model_factory: PrithviModelFactory
+    # uncomment this block for tiled inference
+    # tiled_inference_parameters:
+    #   h_crop: 224
+    #   h_stride: 192
+    #   w_crop: 224
+    #   w_stride: 192
+    #   average_patches: true
+optimizer:
+  class_path: torch.optim.AdamW
+  init_args:
+    lr: 0.00031406904191973693
+    weight_decay: 0.03283253068408954
+lr_scheduler:
+  class_path: ReduceLROnPlateau
+  init_args:
+    monitor: val/loss
+
+# ccc prediction
+# terratorch predict -c /dccstor/cskenya/users/juliank/EOFM/AGB/terratorch/che/global_ecoregions/che-finetune.yaml 
+# --ckpt_path /dccstor/cskenya/users/juliank/EOFM/AGB/terratorch/che/global_ecoregions/all_ecos_random/version_0/checkpoints/epoch=38_state_dict.ckpt 
+# --predict_output_dir /dccstor/cskenya/users/juliank/EOFM/AGB/terratorch/che/global_ecoregions/all_ecos_random/version_0/output_predictions 
+# --data.init_args.predict_data_root /dccstor/hhr-weather/CHM/RandomSampling/test_images 
+# --data.init_args.predict_dataset_bands [-1,BLUE,GREEN,RED,NIR_NARROW,SWIR_1,SWIR_2,-1,-1,-1]
+
+# OC fit
+# terratorch fit -c /data/Taiga_Ecoregion/taiga_config.yaml

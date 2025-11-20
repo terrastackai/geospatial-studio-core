@@ -1,0 +1,195 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${FTUNE_NAME}-config
+  labels:
+    app: ${FTUNE_NAME}
+data:
+  config-train.yaml: |
+    ${TUNING_CONFIG_YAML}
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${FTUNE_NAME}-config-pvc
+  labels:
+    app: ${FTUNE_NAME}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# kubernetes job using the PVC
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app-name: ${FTUNE_NAME}
+  name: ${FTUNE_NAME}-hpo
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: ${FTUNE_NAME}
+        app-name: ${FTUNE_NAME}
+    spec:
+      ${NODE_AFFINITY}
+      initContainers:
+        - name: copy-config
+          image: busybox
+          command:
+          - sh
+          - -c
+          - |
+            set -e
+            cp /config/config-train.yaml /app/config/
+            mkdir -p /data/output
+            chmod -R g+rwX /data/output
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+            - name: persistent-storage
+              mountPath: /app/config
+            - name: mount-data
+              mountPath: /data
+      containers:
+        - name:  hpo-tune
+          image: ${FTUNING_RUNTIME_IMAGE}
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: '${RESOURCE_LIMIT_CPU}'
+              memory: ${RESOURCE_LIMIT_Memory}G
+              nvidia.com/gpu: '${RESOURCE_LIMIT_GPU}'
+            requests:
+              cpu: '${RESOURCE_REQUEST_CPU}'
+              memory: ${RESOURCE_REQUEST_Memory}G
+              nvidia.com/gpu: '${RESOURCE_REQUEST_GPU}'
+          volumeMounts:
+            - name: mount-data
+              mountPath: /data
+            - name: mount-models
+              mountPath: /terratorch/gfm_models
+            - name: mount-geotunes
+              mountPath: /geotunes
+            - name: persistent-storage
+              mountPath: /app/config
+            - name: ftuning-script
+              mountPath: /ftuning
+            - name: dshm
+              mountPath: /dev/shm
+          command: ["/bin/sh"]
+          args: ["-c", "/ftuning/ftuning.sh"]
+          env:
+            - name: HF_HOME
+              value: /tmp/huggingface
+            - name: TRANSFORMERS_CACHE
+              value: /tmp/huggingface
+            - name: MPLCONFIGDIR
+              value: /tmp/matplotlib
+      volumes:
+        - name: mount-data
+          persistentVolumeClaim:
+            claimName: gfm-ft-data-pvc
+        - name: mount-models
+          persistentVolumeClaim:
+            claimName: gfm-ft-models-pvc
+        - name: mount-geotunes
+          persistentVolumeClaim:
+            claimName: gfm-ft-files-pvc
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        - name: config-volume
+          configMap:
+            name: ${FTUNE_NAME}-config
+        - name: persistent-storage
+          persistentVolumeClaim:
+            claimName: ${FTUNE_NAME}-config-pvc
+        - name: ftuning-script
+          configMap:
+            name: ftuning-script-${TUNE_ID}
+            defaultMode: 0755
+      restartPolicy: Never 
+      imagePullSecrets:
+        - name: us-icr-pull-secret
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ftuning-script-${TUNE_ID}
+data:
+  ftuning.sh: |
+    #!/bin/sh
+    set -e
+
+    # Function to handle errors
+    error_handler() {
+        local status=$?
+
+        echo "An error occurred. Sending error notification..."
+        echo "Notify FT with EVENT_ID:$FT_WEBHOOKS_ID and TUNE_ID: $TUNE_ID"
+
+        curl -k -XPOST ${FT_WEBHOOKS_URL} \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -H 'X-API-KEY: ${FT_API_KEY}' \
+            -d "{
+            \"event_id\": \"$FT_WEBHOOKS_ID\",
+            \"detail_type\": \"Ftune:Task:JobNotifications\",
+            \"source\": \"com.ibm.ftuning\",
+            \"timestamp\": \"$(date +%Y-%m-%dT%H:%M:%SZ)\",
+            \"detail\": {\"status\": \"Failed\", \"tune_id\": \"$TUNE_ID\"}
+            }"
+        exit $status
+    }
+
+    # Function to send success notification
+    success_handler() {
+        echo "Job completed successfully. Sending success notification..."
+        echo "Notify FT with EVENT_ID: $FT_WEBHOOKS_ID and TUNE_ID: $TUNE_ID"
+        curl -k -XPOST ${FT_WEBHOOKS_URL} \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -H 'X-API-KEY: ${FT_API_KEY}' \
+            -d "{
+            \"event_id\": \"$FT_WEBHOOKS_ID\",
+            \"detail_type\": \"Ftune:Task:JobNotifications\",
+            \"source\": \"com.ibm.ftuning\",
+            \"timestamp\": \"$(date +%Y-%m-%dT%H:%M:%SZ)\",
+            \"detail\": {\"status\": \"Finished\", \"tune_id\": \"$TUNE_ID\"}
+            }"
+    }
+
+    # Trap errors to call error_handler
+    trap 'error_handler' ERR
+
+    echo "Check Terratorch version before starting to tune..."
+    echo $( /opt/miniforge/bin/python -m pip freeze | grep terratorch )
+    echo
+
+    
+    echo "Running start tuning task..."
+    sleep 5
+
+    # Fine tuning command
+    terratorch iterate --hpo --config /app/config/config-train.yaml
+
+    echo "Tuning task completed"
+
+    # Call success handler if no errors occurred
+    success_handler
+    echo "Job ${FTUNE_NAME}-hpo , PVC ${FTUNE_NAME}-config-pvc , ConfigMap ${FTUNE_NAME}-config, ftuning-script-${TUNE_ID} created in $NAMESPACE. Fine-tuning completed"

@@ -1,0 +1,240 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+# lightning.pytorch==2.1.1
+seed_everything: 0
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: 16-mixed
+  logger:
+    class_path: lightning.pytorch.loggers.mlflow.MLFlowLogger
+    init_args:
+      experiment_name: {{ tune_id }} # Future version, chnage this to user / email
+      run_name: "Train"    # Future version, chnage this to tune_id
+      tracking_uri: {{ mlflow_tracking_url }}
+      save_dir: {{ mount_root + 'tune-tasks/' + tune_id + '/mlflow' }}
+      {% if mlflow_tags -%}
+      tags:
+        {% for key, value in mlflow_tags.items() -%}
+        {{ key }}: {{ value }}
+        {% endfor %}
+      {%- endif %}       
+  callbacks:
+    - class_path: RichProgressBar
+    - class_path: LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    # ---- Early stop if ----
+    {% if runner["early_stopping_patience"] -%}
+    - class_path: EarlyStopping
+      init_args:
+        monitor: {{ runner["early_stopping_monitor"]}}
+        patience: {{ runner["early_stopping_patience"] }}
+    {%- endif %}
+     # ---- Early stop endif ----
+    - class_path: ModelCheckpoint
+      init_args:
+        dirpath: {{ mount_root + 'tune-tasks/' + tune_id  + '/' }}
+        mode: min
+        monitor: val/loss
+        filename: {{ 'best-state_dict-{epoch:02d}' }}
+        save_weights_only: True
+  max_epochs: {{ runner["max_epochs"] }}
+  check_val_every_n_epoch: {{ evaluation["interval"] }}
+  log_every_n_steps: 50
+  enable_checkpointing: true
+  default_root_dir: {{ mount_root + 'tune-tasks/' + tune_id }}
+
+data:
+  class_path: terratorch.datamodules.GenericNonGeoPixelwiseRegressionDataModule
+  init_args:
+    batch_size: {{ data["batch_size"] }}
+    num_workers: {{ data["workers_per_gpu"] }}
+    no_label_replace: {{ label_nodata }}
+    no_data_replace: {{ image_nodata_replace }}
+    constant_scale: {{ constant_multiply }}
+    dataset_bands:
+      {{ bands.values() | list | first | to_yaml | indent(6) }}
+    output_bands:
+      {{ output_bands.values() | list | first | to_yaml | indent(6) }}
+    rgb_indices:
+      {{ rgb_band_indices | to_yaml | indent(6) }}
+    train_data_root: {{ data_root }}{{ train_data_dir.values() | list | first }}
+    train_label_data_root: {{ data_root + train_labels_dir }}
+    val_data_root: {{ data_root }}{{ val_data_dir.values() | list | first }}
+    val_label_data_root: {{ data_root + val_labels_dir }}
+    test_data_root: {{ data_root }}{{ test_data_dir.values() | list | first }}
+    test_label_data_root: {{ data_root + test_labels_dir }}
+    {% if train_split_path -%}
+    train_split: {{ data_root + train_split_path }}
+    {% endif -%}
+    {% if test_split_path -%}
+    test_split: {{ data_root + test_split_path }}
+    {% endif -%}
+    {% if val_split_path -%}
+    val_split: {{ data_root + val_split_path }}
+    {% endif -%}
+    {% if img_suffix -%}
+    img_grep:  {{ img_suffix.values() | list | first | tojson }}
+    {% endif -%}
+    {% if seg_map_suffix -%}
+    label_grep: "{{ seg_map_suffix }}"
+    {% endif -%}
+    means: 
+      {{ norm_means.values() | list | first| to_yaml | indent(6) }}
+    stds: 
+      {{ norm_stds.values() | list | first | to_yaml | indent(6) }}
+    {% if data["expand_temporal_dimension"] is not none -%}
+    expand_temporal_dimension: data["expand_temporal_dimension"]
+    {% endif -%}
+    {% if data["drop_last"] is not none -%}
+    drop_last: data["drop_last"]
+    {% endif -%}
+    # ---- train_transform if ----
+    {% if data["train_transform"] -%}
+    train_transform:
+    {% for transform in data["train_transform"] %}
+    - class_path: trasnsform["class_path"]
+      init_args:
+        {% if trasnsform["height"] is not none -%}
+        height: trasnsform["height"]
+        {% endif -%}
+        {% if trasnsform["width"] is not none -%}
+        width: trasnsform["width"]
+        {% endif -%}
+        {% if trasnsform["always_apply"] is not none -%}
+        always_apply: trasnsform["always_apply"]
+        {% endif -%}
+        {% if trasnsform["transpose_mask"] is not none -%}
+        transpose_mask: trasnsform["transpose_mask"]
+        {% endif -%}
+        {% if trasnsform["p"] is not none -%}
+        p: trasnsform["p"]
+        {% endif -%}
+    {% endfor %}
+    {% endif -%}
+    # ---- train_transform endif ----
+
+    # if backbone is prithvi-EO-v2
+    test_transform:
+      - class_path: ToTensorV2
+model:
+  class_path: terratorch.tasks.PixelwiseRegressionTask
+  init_args:
+    model_args: 
+      {%- if pretrained_model_name == "prithvi_eo_v1_100" or pretrained_model_name == "prithvi_eo_v2_300" or pretrained_model_name == "prithvi_eo_v2_300_tl" or pretrained_model_name == "prithvi_eo_v2_600" or pretrained_model_name == "prithvi_eo_v2_600_tl" %}
+      backbone_pretrained: true 
+      backbone: {{ pretrained_model_name }}
+      backbone_ckpt_path: {{ pretrained_weights_path }} 
+      backbone_drop_path: 0.1 
+      backbone_bands:
+        {{ output_bands.values() | list | first | to_yaml | indent(8) }}
+      necks: 
+        - name: SelectIndices
+          {%- if pretrained_model_name == "prithvi_eo_v1_100" %}
+          indices: [2, 5, 8, 11] # 100M models
+          {%- elif pretrained_model_name == "prithvi_eo_v2_300" or pretrained_model_name == "prithvi_eo_v2_300_tl" %}
+          indices: [5, 11, 17, 23]  # 300M models
+          {%- elif pretrained_model_name == "prithvi_eo_v2_600" or pretrained_model_name == "prithvi_eo_v2_600_tl" %}
+          indices: [7, 15, 23, 31] # 600M models    
+          {% endif %}
+        - name: ReshapeTokensToImage # required
+        - name: LearnedInterpolateToPyramidal
+      {%- else %}
+      # Old model version configurations
+      pretrained: true
+      backbone: {{ pretrained_model_name }}
+      backbone_pretrained_cfg_overlay:
+        file: {{ pretrained_weights_path }}
+      # backbone_temporal_encoding: true
+      backbone_drop_path_rate: 0.3
+      backbone_window_size: 7
+      num_frames: {{ num_frames }}
+      head_final_act: torch.nn.ReLU
+      head_learned_upscale_layers: 2
+      in_channels: {{ bands.values() | list | first | length }}
+      head_channel_list:
+        {{ head_channel_list | to_yaml | indent(10) }}
+      bands:
+        {{ output_bands.values() | list | first | to_yaml | indent(8) }}
+      {% endif %} 
+      decoder: {{ model["decode_head"]["decoder"] }}
+      {% if  model["decode_head"]["decoder"] == "UperNetDecoder" -%}
+      decoder_channels: 256
+      {% elif  model["decode_head"]["decoder"] == "UNetDecoder" -%}
+      decoder_channels: [512, 256, 128, 64]
+      {% else %}
+      decoder_channels: {{ model["decode_head"]["channels"] }}
+      {% endif -%}
+      head_dropout: 0.1
+    # Model factory
+    {% if pretrained_model_name == "prithvi_eo_v1_100" or pretrained_model_name == "prithvi_eo_v2_300" or pretrained_model_name == "prithvi_eo_v2_300_tl" or pretrained_model_name == "prithvi_eo_v2_600" or pretrained_model_name == "prithvi_eo_v2_600_tl" -%}
+    model_factory: EncoderDecoderFactory
+    {%- else %}
+    model_factory: PrithviModelFactory
+    {% endif %} 
+    loss: {{ model["decode_head"]["loss_decode"]["type"] }}
+    plot_on_val: {{ runner["plot_on_val"] }}
+    {% if model["auxiliary_head"] -%}
+    aux_heads:
+      - name: aux_head
+        decoder: {{ model["auxiliary_head"]["decoder"] }}
+        decoder_args:
+          decoder_channels: {{ model["auxiliary_head"]["channels"] }}
+          decoder_in_index: {{ model["auxiliary_head"]["in_index"] }}
+          decoder_num_convs: {{ model["auxiliary_head"]["num_convs"] }}
+          head_dropout:  {{ model["auxiliary_head"]["dropout"] }}
+          # head_channel_list:
+          #   - 64
+    aux_loss:
+      aux_head: {{ model["auxiliary_head"]["loss_decode"]["loss_weight"] }}
+    {% endif -%}
+    ignore_index: {{ ignore_index }}
+    freeze_backbone: {{ model["frozen_backbone"] | lower }}
+    freeze_decoder: false
+    # ---- optimizer start ----
+    {% if model["optimizer"] -%}
+    optimizer: {{ model["optimizer"]["type"] }}
+    lr: {{ model["optimizer"]["lr"] | float }}
+    {% endif -%}
+    # ---- optimizer end ----
+    {% if model["tiled_inference_parameters"] %}
+    tiled_inference_parameters: 
+      h_crop: {{ model["tiled_inference_parameters"]["h_crop"] | int}}
+      h_stride: {{ model["tiled_inference_parameters"]["h_stride"] | int }}
+      w_crop: {{ model["tiled_inference_parameters"]["w_crop"] | int}}
+      w_stride: {{ model["tiled_inference_parameters"]["w_stride"] | int }}
+      average_patches: {{ model["tiled_inference_parameters"]["average_patches"] }}
+    {% else %}
+    tiled_inference_parameters: 
+      h_crop: 512
+      # stride logic = would be h_crop - h_crop * 0.125
+      h_stride: 448
+      w_crop: 512
+      # stride logic = would be w_crop - w_crop * 0.125
+      w_stride: 448
+      average_patches: true
+    {% endif %}
+optimizer:
+  class_path: {{ 'torch.optim.' + optimizer["type"] }}
+  init_args:
+    # ---- Optimizer start if ----
+    {% if optimizer["lr"] -%}
+    lr: {{ optimizer["lr"] | float }}
+    {% else %}
+    lr: 1.e-4
+    {% endif -%}
+    {% if optimizer["weight_decay"] -%}
+    weight_decay: {{ optimizer["weight_decay"] }}
+    {% else %}
+    weight_decay: 0.05
+    {% endif -%}
+    # ---- Optimizer stop if ----
+lr_scheduler:
+  class_path: ReduceLROnPlateau
+  init_args:
+    monitor: val/loss
