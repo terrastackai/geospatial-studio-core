@@ -7,7 +7,7 @@ This component pushes the results to geoserver.
 """
 
 # Dependencies
-# pip install geoserver-rest==2.10.0 Jinja2 python-dotenv opentelemetry-distro opentelemetry-exporter-otlp
+# pip install rasterio geopandas geoserver-rest==2.10.0 Jinja2 python-dotenv opentelemetry-distro opentelemetry-exporter-otlp
 
 from push_to_geoserver_helper_functions import *
 
