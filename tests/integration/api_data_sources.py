@@ -33,7 +33,7 @@ DATA_SOURCE_SENTINEL = {
         "rgb_bands": ["Red", "Green", "Blue"],
         "resolution_m": 30,
         "cloud_masking": {"band": "QA", "encoding": "hls_fmask"},
-        "query_template": 'Template(""" //VERSION=3 \\n function setup() { return { input: [{ bands: ${bands}, units: \\"DN\\" }], output: { bands: ${num_bands}, sampleType: \\"INT16\\" } }; } function evaluatePixel(sample) { return ${band_samples}; } """)',
+        "query_template": 'Template(""" //VERSION=3 \\n function setup() { return { input: [{ bands: ${bands}, units: \\"DN\\" }], output: { bands: ${num_bands}, sampleType: \\"INT16\\" } }; } function evaluatePixel(sample) { return ${band_samples}; } """)',  # noqa E501
         "collection_name": "hls_l30",
         "data_collection": "DataCollection.HARMONIZED_LANDSAT_SENTINEL",
         "request_input_data": {
