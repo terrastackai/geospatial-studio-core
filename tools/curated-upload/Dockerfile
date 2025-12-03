@@ -10,6 +10,6 @@ RUN pip install --upgrade pip
 RUN pip install ipython nbformat
 RUN pip install --no-cache-dir rio-cogeo wget scikit-learn>=1.3.0 rasterio boto3==1.35.82 botocore numpy>=1.22.2 tqdm requests humanize terrakit
 RUN chmod -R 777 /opt/app-root/src/
-USER default
+USER 10001
 WORKDIR "/opt/app-root/src/"
 CMD ["python", "claimed_curated_upload_v2.py"]
