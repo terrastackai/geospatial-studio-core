@@ -17,7 +17,7 @@ ${additional_files_docker}
 RUN chmod -R 777 ${working_dir}
 RUN chmod -R 777 /opt/conda/lib/python3.11/site-packages/terratorch/
 
-USER 1001
+USER 10001
 WORKDIR "${working_dir}"
 
 ADD orchestrate_wrapper/orchestrate_wrapper.py ${working_dir}

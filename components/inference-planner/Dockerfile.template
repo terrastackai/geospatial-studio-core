@@ -24,7 +24,7 @@ RUN mkdir ${working_dir}data \
 && mkdir /.docker && chmod -R 777 /.docker \
 && mkdir /.local && chmod -R 777 /.local \
 && mkdir /.cache && chmod -R 777 /.cache \
-&& chown -R 1001:1001 ${working_dir} \
+&& chown -R 10001:10001 ${working_dir} \
 && chmod -R 777 ${working_dir}
 
 COPY sentinelhub_config.toml /.config/sentinelhub/config.toml
@@ -36,7 +36,7 @@ ADD ${target_code} ${working_dir}${target_dir}
 ${additional_files_docker}
 RUN chmod -R 777 ${working_dir}
 
-USER 1001
+USER 10001
 WORKDIR "${working_dir}"
 
 ADD orchestrate_wrapper/orchestrate_wrapper.py ${working_dir}
