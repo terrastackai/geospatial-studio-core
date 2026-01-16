@@ -113,7 +113,10 @@ async def invoke_load_model_artifacts(
         "config_path": config_filename,
         "checkpoint_file": checkpoint_filename,
     }
-    create_caikit_config_file = f"echo {json.dumps(create_caikit_config)} | yq -P . > /mnt/data/{model_id_directory_name}config.yml"
+    create_caikit_config_file = (
+        f"echo {json.dumps(create_caikit_config)} "
+        f"| yq -P . > /mnt/data/{model_id_directory_name}config.yml"
+    )
 
     download_commands.append(create_caikit_config_file)
 
@@ -394,7 +397,8 @@ async def prepare_model_files(
 ):
     """
     Prepare model configuration and checkpoint files for a given model.
-    This function initiates the upload of model files to a specified bucket and handles exceptions related to the process.
+    This function initiates the upload of model files to a specified bucket and handles
+    exceptions related to the process.
 
     Args:
         model_id (str): Unique identifier for the model.
@@ -466,7 +470,7 @@ async def delete_job_on_completion(
                 )
                 logger.info(f"Job '{job_name}' deleted successfully.")
                 break
-            await asyncio.sleep(10)  # Poll every 10 seconds
+            await asyncio.sleep(30)  # Poll every 30 seconds
     except client.exceptions.ApiException as e:
         logger.error(f"Error in job deletion: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete Job: {str(e)}")

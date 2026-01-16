@@ -1,0 +1,10 @@
+{
+   "settingsInheritedFrom": "whitesource-config/whitesource-config@python3.9",
+   "enableRenovate": true,
+   "remediateSettings": {
+     "workflowRules": {
+         "enabled": true
+     }
+   },
+   "extends": ["config:recommended"]
+}

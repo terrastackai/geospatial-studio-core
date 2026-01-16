@@ -169,6 +169,7 @@ async def invoke_tune_upload_handler(
                 config=Config(
                     signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION
                 ),
+                verify=(settings.ENVIRONMENT.lower() != "local"),
             )
         except ValueError as exc:
             logger.error(f"pipeline_s3_client Misconfiguration: {str(exc)}")
