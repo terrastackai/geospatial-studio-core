@@ -34,12 +34,13 @@ def generate_download_presigned_url(
             aws_access_key_id=os.getenv("gfm-inference-outputs-cos-access-key"),
             aws_secret_access_key=os.getenv("gfm-inference-outputs-cos-secret-key"),
             endpoint_url=endpoint_url,
+            verify=(settings.ENVIRONMENT.lower() != 'local'),
         )
     bucket_name = bucket_name or os.getenv("OUTPUT_BUCKET", "dev-output-pv-storage")
     params = {"Bucket": bucket_name, "Key": object_key}
     # Generate the pre-signed URL
     output_url = s3.generate_presigned_url(
-        "get_object", Params=params, ExpiresIn=expiration
+        "get_object", Params=params, ExpiresIn=expiration,
     )
     logger.debug(f"Output url: {output_url}")
     return output_url
@@ -66,6 +67,7 @@ def generate_upload_presigned_url(
             aws_secret_access_key=os.getenv("gfm-inference-outputs-cos-secret-key"),
             endpoint_url=cos_service_endpoint,
             config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
+            verify=(settings.ENVIRONMENT.lower() != "local"),
         )
 
     signedUrl = s3.generate_presigned_url(

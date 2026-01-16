@@ -11,7 +11,7 @@ import requests
 from geospatial_extension.blocks.geospatial.exceptions import (
     GeospatialInferenceException,
 )
-from geospatial_extension.blocks.geospatial.settings import APPLICATION_DATA_DIR
+from geospatial_extension.blocks.geospatial.settings import APPLICATION_DATA_DIR, ENVIRONMENT
 from geospatial_extension.blocks.geospatial.utils import report_exception
 from webhooks import webhooks
 
@@ -213,6 +213,7 @@ def create_presigned_url(object_key):
         aws_access_key_id=os.environ["gfm-inference-outputs-cos-access-key"],
         aws_secret_access_key=os.environ["gfm-inference-outputs-cos-secret-key"],
         endpoint_url=endpoint_url,
+        verify=(ENVIRONMENT.lower() != "local"),
     )
     bucket_name = os.environ["OUTPUT_BUCKET"]
     params = {"Bucket": bucket_name, "Key": object_key}
