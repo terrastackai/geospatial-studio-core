@@ -566,6 +566,8 @@ class DataLoading(BaseModel):
     class_weights: Optional[list] = None
     norm_means: Optional[list[float]] = None
     norm_stds: Optional[list[float]] = None
+    model_config = {"extra": "allow"}
+    
 
 
 class Runner(BaseModel):
@@ -912,6 +914,7 @@ class TemplateUserDefinedParams(BaseModel):
     evaluation: Optional[Evaluation] = Evaluation()
     model: Optional[Model] = Model()
     backbone_model_id: Optional[str] = None
+    model_config = {"extra": "allow"}
 
 
 class ModelBaseParams(BaseModel):

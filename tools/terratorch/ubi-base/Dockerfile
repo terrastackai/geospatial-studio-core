@@ -57,6 +57,9 @@ RUN groupadd -g 10001 appgroup && \
     useradd -r -u 10001 -g appgroup -ms /bin/bash appuser && \
     chown -R appuser:appgroup /terratorch
 
+RUN mkdir /ftuning
+RUN chmod -R 777 /opt/app-root/src/ /ftuning
+
 # Setup UTF-8 locale
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
