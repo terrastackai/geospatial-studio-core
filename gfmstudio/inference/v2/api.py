@@ -650,7 +650,7 @@ def parse_generic_processor_form_data(
 
 
 @router.post(
-    "/generic-processor/",
+    "/generic-processor",
     response_model=schemas.GenericProcessorGetResponse,
     tags=["Tasks / Generic processor"],
     status_code=201,
