@@ -4,9 +4,9 @@
 
 """Added table for generic processor component
 
-Revision ID: ed78d7c2cc00
+Revision ID: 9f02b7f65a7d
 Revises: d7905b61e9dc
-Create Date: 2026-01-19 11:25:51.033861
+Create Date: 2026-01-19 14:15:30.165373
 
 """
 from alembic import op
@@ -15,7 +15,7 @@ import sqlalchemy_utils
 
 
 # revision identifiers, used by Alembic.
-revision = "ed78d7c2cc00"
+revision = "9f02b7f65a7d"
 down_revision = "d7905b61e9dc"
 branch_labels = None
 depends_on = None
@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("processor_file_path", sa.String(), nullable=False),
+        sa.Column("processor_file_path", sa.String(), nullable=True),
         sa.Column("processor_parameters", sa.JSON(), nullable=True),
         sa.Column("status", sa.String(length=50), nullable=False),
         sa.Column(

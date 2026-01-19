@@ -214,7 +214,7 @@ class GenericProcessor(AbstractBase):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     description = Column(Text)
-    processor_file_path = Column(String, nullable=False)
+    processor_file_path = Column(String)
     processor_parameters = Column(JSON)
     status = Column(
         String(50),

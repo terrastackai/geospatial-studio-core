@@ -4,14 +4,27 @@
 
 import datetime
 import os
+import json
 import uuid
 from typing import Optional
 
 import boto3
 import httpx
 from botocore.client import ClientError, Config
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    Depends,
+    File,
+    Form,
+)
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from sse_starlette import EventSourceResponse
@@ -621,6 +634,21 @@ async def cancel_inference(
 # ***************************************************
 # Generic Processor component
 # ***************************************************
+
+
+def parse_generic_processor_form_data(
+    generic_processor_metadata: str = Form(...),
+) -> schemas.GenericProcessorCreate:
+    """Parse form data for Generic Processor creation."""
+    try:
+        return schemas.GenericProcessorCreate(**json.loads(generic_processor_metadata))
+    except (json.JSONDecodeError, ValidationError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail=str(e),
+        )
+
+
 @router.post(
     "/generic-processor/",
     response_model=schemas.GenericProcessorGetResponse,
@@ -628,20 +656,74 @@ async def cancel_inference(
     status_code=201,
 )
 async def create_generic_processor(
-    request: Request,
-    generic_processor: schemas.GenericProcessorCreate,
+    generic_processor: str = Depends(parse_generic_processor_form_data),
+    generic_processor_file: UploadFile = File(...),
     db: Session = Depends(utils.get_db),
     auth=Depends(auth_handler),
 ):
     user = auth[0]
 
-    print("Generic" ,generic_processor)
-
+    # Create generic processor record in DB
     created_generic_processor = generic_processor_crud.create(
         db, item=generic_processor, user=user
     )
+    # Upload generic processor file to COS
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=settings.OBJECT_STORAGE_KEY_ID,
+        aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
+        endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
+        config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
+        verify=(settings.ENVIRONMENT.lower() != "local"),
+    )
+    generic_processor_cos_path = (
+        f"{str(created_generic_processor.id)}/{generic_processor_file.filename}"
+    )
+    print(f"Cos_file_path: [{generic_processor_cos_path}]")
 
-    return created_generic_processor
+    try:
+        s3.put_object(
+            Bucket=settings.GENERIC_PROCESSOR_BUCKET,
+            Key=generic_processor_cos_path,
+            Body=generic_processor_file.file,
+        )
+    except Exception as e:
+        logger.exception(
+            "An error occured when uploading generic processor file to COS."
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Failed uploading generic processor file to object storage {e}."
+            },
+        )
+
+    # Update the file_path in COS in the DB record
+    # breakpoint()
+    try:
+        updated_generic_processor = generic_processor_crud.update(
+            db=db,
+            item_id=created_generic_processor.id,
+            item={
+                "processor_file_path": str(generic_processor_cos_path),
+                "status": "FINISHED",
+            },
+            user=user,
+        )
+
+        # Update to dict for response
+        updated_generic_processor.processor_file_path = generic_processor_cos_path
+
+        return updated_generic_processor
+
+    except Exception as e:
+        logger.exception(
+            "An error occured when updating generic processor record in DB."
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Failed updating generic processor record in DB {e}."},
+        )
 
 
 @router.get(
@@ -657,9 +739,46 @@ async def retrieve_generic_processor(
     user = auth[0]
     item = generic_processor_crud.get_by_id(db, generic_processor_id, user=user)
     if not item:
-        raise HTTPException(status_code=404, detail="Generic Processor component not found")
+        raise HTTPException(
+            status_code=404, detail="Generic Processor component not found"
+        )
 
-    return item
+    # Grab file from COS using the path stored in DB
+    if item.processor_file_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Generic Processor component file path not found",
+        )
+
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=settings.OBJECT_STORAGE_KEY_ID,
+        aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
+        endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
+        config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
+        verify=(settings.ENVIRONMENT.lower() != "local"),
+    )
+
+
+    try:
+        download_file_path_url = generate_download_presigned_url(
+            s3=s3,
+            object_key=item.processor_file_path,
+            bucket_name=settings.GENERIC_PROCESSOR_BUCKET,
+            expiration=28800,
+        )
+    except Exception:
+        logger.exception("An error occured when generating download presigned-url.")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Failed creating download presigned url."},
+        )
+
+    updated_dict = item.__dict__
+
+    updated_dict["processor_presigned_url"] = download_file_path_url
+
+    return updated_dict
 
 
 @router.get(
@@ -680,7 +799,9 @@ async def list_generic_processors(
     )
 
     if not items:
-        raise HTTPException(status_code=404, detail="Generic Processor components not found")
+        raise HTTPException(
+            status_code=404, detail="Generic Processor components not found"
+        )
 
     return {"results": items, "total_records": count}
 
@@ -1110,6 +1231,7 @@ async def get_fileshare_presigned_urls(
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
         verify=(settings.ENVIRONMENT.lower() != "local"),
+        region_name=settings.OBJECT_STORAGE_REGION,
     )
     try:
         upload_url = generate_upload_presigned_url(
