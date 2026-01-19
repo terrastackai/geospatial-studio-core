@@ -679,7 +679,6 @@ async def create_generic_processor(
     generic_processor_cos_path = (
         f"{str(created_generic_processor.id)}/{generic_processor_file.filename}"
     )
-    print(f"Cos_file_path: [{generic_processor_cos_path}]")
 
     try:
         s3.put_object(
@@ -699,7 +698,6 @@ async def create_generic_processor(
         )
 
     # Update the file_path in COS in the DB record
-    # breakpoint()
     try:
         updated_generic_processor = generic_processor_crud.update(
             db=db,
@@ -1231,7 +1229,6 @@ async def get_fileshare_presigned_urls(
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
         verify=(settings.ENVIRONMENT.lower() != "local"),
-        region_name=settings.OBJECT_STORAGE_REGION,
     )
     try:
         upload_url = generate_upload_presigned_url(

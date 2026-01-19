@@ -66,6 +66,10 @@ class InferenceStatus(enum.StrEnum):
         "PUBLISHING_RESULTS"  # Uploading results to external systems like GeoServer
     )
 
+class GenericProcessorStatus(enum.StrEnum):
+    PENDING = "PENDING" # Script yet uploaded to COS
+    FINISHED = "FINISHED" # Script successfully uploaded to COS
+    FAILED = "FAILED"   # Script upload to COS failed
 
 INFERENCE_STATE_TRANSITIONS: Dict[InferenceStatus | str, List[InferenceStatus]] = {
     InferenceStatus.PENDING: [

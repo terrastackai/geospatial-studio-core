@@ -25,7 +25,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import column_property, relationship
 
 from ...common.models import AbstractBase, utc_now
-from ..types import ModelStatus
+from ..types import ModelStatus, GenericProcessorStatus
 
 
 class Model(AbstractBase):
@@ -218,7 +218,7 @@ class GenericProcessor(AbstractBase):
     processor_parameters = Column(JSON)
     status = Column(
         String(50),
-        default=ModelStatus.PENDING,
+        default=GenericProcessorStatus.PENDING,
         nullable=False,
     )
 
