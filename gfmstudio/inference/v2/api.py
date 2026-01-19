@@ -45,7 +45,13 @@ from gfmstudio.inference.types import (
     transition_to,
 )
 from gfmstudio.inference.v2 import helpers, schemas
-from gfmstudio.inference.v2.models import Inference, Model, Notification, Task
+from gfmstudio.inference.v2.models import (
+    Inference,
+    Model,
+    Notification,
+    Task,
+    GenericProcessor,
+)
 from gfmstudio.inference.v2.schemas import DataAdvisorRequestSchema
 from gfmstudio.inference.v2.services import (
     cleanup_autodeployed_model_resources,
@@ -62,6 +68,7 @@ model_crud = crud.ItemCrud(model=Model)
 task_crud = crud.ItemCrud(model=Task)
 inference_crud = crud.ItemCrud(model=Inference)
 notification_crud = crud.ItemCrud(model=Notification)
+generic_processor_crud = crud.ItemCrud(model=GenericProcessor)
 
 EXPERIMENTAL_MODEL_NAMING = "sandbox"
 pipelines_bucket_name = settings.PIPELINES_V2_COS_BUCKET
@@ -609,6 +616,94 @@ async def cancel_inference(
             "msg": "Cancel inference request accepted.Inference tasks will be terminated gracefully."
         },
     )
+
+
+# ***************************************************
+# Generic Processor component
+# ***************************************************
+@router.post(
+    "/generic-processor/",
+    response_model=schemas.GenericProcessorGetResponse,
+    tags=["Tasks / Generic processor"],
+    status_code=201,
+)
+async def create_generic_processor(
+    request: Request,
+    generic_processor: schemas.GenericProcessorCreate,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+
+    print("Generic" ,generic_processor)
+
+    created_generic_processor = generic_processor_crud.create(
+        db, item=generic_processor, user=user
+    )
+
+    return created_generic_processor
+
+
+@router.get(
+    "/generic-processor/{generic_processor_id}",
+    response_model=schemas.GenericProcessorGetResponse,
+    tags=["Tasks / Generic processor"],
+)
+async def retrieve_generic_processor(
+    generic_processor_id: uuid.UUID,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+    item = generic_processor_crud.get_by_id(db, generic_processor_id, user=user)
+    if not item:
+        raise HTTPException(status_code=404, detail="Generic Processor component not found")
+
+    return item
+
+
+@router.get(
+    "/generic-processor",
+    response_model=schemas.GenericProcessorListResponse,
+    tags=["Tasks / Generic processor"],
+)
+async def list_generic_processors(
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+
+    count, items = generic_processor_crud.get_all(
+        db=db,
+        user=user,
+        total_count=True,
+    )
+
+    if not items:
+        raise HTTPException(status_code=404, detail="Generic Processor components not found")
+
+    return {"results": items, "total_records": count}
+
+
+@router.delete(
+    "/generic-processor/{generic_processor_id}",
+    tags=["Tasks / Generic processor"],
+    status_code=204,
+)
+async def delete_generic_processor(
+    generic_processor_id: uuid.UUID,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+    item = generic_processor_crud.get_by_id(db, generic_processor_id, user=user)
+    if not item:
+        raise HTTPException(
+            status_code=404, detail="Generic Processor component not found"
+        )
+
+    generic_processor_crud.soft_delete(db, item_id=generic_processor_id, user=user)
+    return item
 
 
 # ***************************************************

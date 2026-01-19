@@ -378,3 +378,33 @@ class FilesShareOut(BaseModel):
     upload_url: str
     download_url: str
     message: str
+
+
+# ***************************************************
+# Generic Processor component task
+# ***************************************************
+class GenericProcessorCreate(BaseModel):
+    """Generic Processor Create Input Schema."""
+    name: str
+    description: Optional[str] = None
+    processor_file_path: str
+    processor_parameters: Optional[Dict[str, Any]] = None
+    status: Optional[str] = "PENDING"
+
+class GenericProcessorGetResponse(ItemResponse, GenericProcessorCreate):
+    """Generic Processor Get Response Schema."""
+    status: Optional[str]   
+    updated_at: Optional[datetime] = None
+    generic_processor_name: Optional[str] = None
+    generic_processor_description: Optional[str] = None
+    generic_processor_file_path: Optional[str] = None
+    generic_processor_parameters: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+    
+class GenericProcessorListResponse(ListResponse):
+    """Generic Processor List Response Schema."""
+    results: Optional[List[GenericProcessorGetResponse]] = []
+    

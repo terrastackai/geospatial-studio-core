@@ -202,3 +202,25 @@ class Notification(AbstractBase):
 
     def __str__(self):
         return f"{self.source} > {self.event_id}"
+
+class GenericProcessor(AbstractBase):
+    """Generic Processor table.
+
+    This class contains the metadata for generic processors.
+    """
+
+    __tablename__ = "inf_generic_processor"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    processor_file_path = Column(String, nullable=False)
+    processor_parameters = Column(JSON)
+    status = Column(
+        String(50),
+        default=ModelStatus.PENDING,
+        nullable=False,
+    )
+
+    def __str__(self):
+        return f"{self.name} > {self.id}"
