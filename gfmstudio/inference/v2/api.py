@@ -757,7 +757,6 @@ async def retrieve_generic_processor(
         verify=(settings.ENVIRONMENT.lower() != "local"),
     )
 
-
     try:
         download_file_path_url = generate_download_presigned_url(
             s3=s3,

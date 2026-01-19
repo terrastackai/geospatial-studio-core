@@ -385,13 +385,16 @@ class FilesShareOut(BaseModel):
 # ***************************************************
 class GenericProcessorCreate(BaseModel):
     """Generic Processor Create Input Schema."""
+
     name: str
     description: Optional[str] = None
     processor_parameters: Optional[Dict[str, Any]] = None
 
+
 class GenericProcessorGetResponse(ItemResponse, GenericProcessorCreate):
     """Generic Processor Get Response Schema."""
-    status: Optional[str]   
+
+    status: Optional[str]
     name: Optional[str] = None
     description: Optional[str] = None
     processor_file_path: Optional[str] = None
@@ -401,8 +404,8 @@ class GenericProcessorGetResponse(ItemResponse, GenericProcessorCreate):
     class Config:
         from_attributes = True
 
-    
+
 class GenericProcessorListResponse(ListResponse):
     """Generic Processor List Response Schema."""
+
     results: Optional[List[GenericProcessorGetResponse]] = []
-    

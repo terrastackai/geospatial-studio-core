@@ -203,6 +203,7 @@ class Notification(AbstractBase):
     def __str__(self):
         return f"{self.source} > {self.event_id}"
 
+
 class GenericProcessor(AbstractBase):
     """Generic Processor table.
 
