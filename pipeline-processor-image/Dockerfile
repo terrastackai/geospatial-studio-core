@@ -27,7 +27,7 @@ RUN microdnf install -y \
 # Install conda and use the base environment and add link to pip in /usr/local/bin
 RUN true \
 && cd /tmp \
-&& curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-py311_25.9.1-3-Linux-x86_64.sh \
+&& curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-py311_25.11.1-1-Linux-x86_64.sh \
 && chmod +x Miniconda3-*-Linux-x86_64.sh \
 && bash ./Miniconda3-*-Linux-x86_64.sh -bf -p /opt/miniconda \
 && rm Miniconda3-*-Linux-x86_64.sh \
@@ -59,8 +59,8 @@ RUN pip install -r /tmp/requirements.txt \
 RUN mkdir /pipeline
 
 ########## Adding core general libraries
-COPY ./general_libraries/gfm_logger /pipeline/
-COPY ./general_libraries/gfm_data_processing /pipeline/
+COPY ./general_libraries/gfm_logger /pipeline/gfm_logger
+COPY ./general_libraries/gfm_data_processing /pipeline/gfm_data_processing
 COPY ./general_libraries/orchestrate_wrapper /pipeline/
 
 ########## Adding specific processor scripts
@@ -71,6 +71,7 @@ COPY ./components/inference-planner/inference_planner_functions.py /pipeline/
 # postprocess-generic-single
 COPY ./components/postprocess-generic-single/postprocess-generic-single.py /pipeline/
 COPY ./components/postprocess-generic-single/postprocess_generic_helper_functions.py /pipeline/
+COPY ./components/postprocess-generic-single/postprocess_regularization.py /pipeline/
 
 # push_to_geoserver
 COPY ./components/push_to_geoserver/push_to_geoserver.py /pipeline/
@@ -78,7 +79,7 @@ COPY ./components/push_to_geoserver/push_to_geoserver_helper_functions.py /pipel
 
 # run-inference
 COPY ./components/run-inference/run-inference.py /pipeline/
-COPY ./components/run-inference/inference_helper /pipeline/
+COPY ./components/run-inference/inference_helper /pipeline/inference_helper
 
 # terrakit_data_fetch
 COPY ./components/terrakit_data_fetch/terrakit_data_fetch.py /pipeline/
@@ -86,7 +87,7 @@ COPY ./components/terrakit_data_fetch/sentinelhub_config.toml /pipeline/
 
 # url-connector-single
 COPY ./components/url-connector-single/url_connector_single.py /pipeline/
-COPY ./components/url-connector-single/preprocessing_helper /pipeline/
+COPY ./components/url-connector-single/preprocessing_helper /pipeline/preprocessing_helper
 
 # curated_upload_v2
 COPY ./components/curated_upload/claimed_curated_upload_v2.py /pipeline/

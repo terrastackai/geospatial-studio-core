@@ -190,6 +190,8 @@ def grab_new_task(engine, process_id):
                 conn.execute(update_overall_status)
                 conn.commit()
 
+
+            logger.info(f">>>>>>>> Returning query info: {query}")
     return query
 
 
@@ -286,6 +288,7 @@ while True:
     ###  if a new task is found, run the process script
     ######################################################################################################
     if len(data) > 0:
+        logger.info(f">>>>>> Query return: {data}")
         task_id = data[0]
         inference_id = str(data[1])
         inference_folder = data[2]
@@ -297,9 +300,9 @@ while True:
         # start_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
 
         # if we want to run a generic python script, pull the correct 
-        if process_id=='python-processor':
-            process_exec=...
-            # TO DO: read requirements from script header and pip install
+        # if process_id=='python-processor':
+        #     process_exec=...
+        #     # TO DO: read requirements from script header and pip install
 
         # Here actually run the process code and capture the logs
         return_value = run_and_log(task_id, process_exec, process_id, inference_folder)
