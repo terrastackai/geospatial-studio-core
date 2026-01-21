@@ -56,6 +56,7 @@ from gfmstudio.inference.types import (
     InferenceStatus,
     ModelStatus,
     transition_to,
+    GenericProcessorStatus
 )
 from gfmstudio.inference.v2 import helpers, schemas
 from gfmstudio.inference.v2.models import (
@@ -331,7 +332,18 @@ async def create_inference(
 ):
     user = auth[0]
 
+    ## ToDO: Get extra params for the generic processor component and add it to the inference config
+    generic_processor_obj = (
+        await retrieve_generic_processor(
+            db=db, generic_processor_id=inference.generic_processor_id, auth=auth
+        )
+        if inference.generic_processor_id
+        else None
+    )
+    
+
     # Validate and retrieve model
+
     model_obj = helpers.get_inference_model(db, inference, user)
 
     # Check if model is ready for inference
@@ -348,6 +360,7 @@ async def create_inference(
     # Get the data spec for the model
     model_data_spec = inference.model_input_data_spec or model_obj.model_input_data_spec
     geoserver_push = inference.geoserver_push or model_obj.geoserver_push
+    generic_processor = helpers.get_generic_processor(generic_processor_obj) if generic_processor_obj else None or []
 
     if not (model_data_spec and geoserver_push):
         raise HTTPException(
@@ -362,16 +375,18 @@ async def create_inference(
     data_connector_config = helpers.get_data_connector_config(
         inference, model_data_spec
     )
+    # Update steps if inference.generic_processor_id is provided
     pipeline_steps = helpers.get_pipeline_steps(inference, model_obj)
 
     # Build inference configuration
     inference_config = helpers.build_inference_config(
-        inference,
-        model_obj,
-        data_connector_config,
-        model_data_spec,
-        geoserver_push,
-        pipeline_steps,
+        inference = inference,
+        model_obj = model_obj,
+        data_connector_config = data_connector_config,
+        model_data_spec = model_data_spec,
+        geoserver_push = geoserver_push,
+        pipeline_steps = pipeline_steps,
+        generic_processor = generic_processor
     )
 
     # Create inference record
@@ -687,6 +702,12 @@ async def create_generic_processor(
             Body=generic_processor_file.file,
         )
     except Exception as e:
+        failed_update = generic_processor_crud.update(
+            db=db,
+            item_id=created_generic_processor.id,
+            item={"status": GenericProcessorStatus.FAILED},
+            user=user,
+        )
         logger.exception(
             "An error occured when uploading generic processor file to COS."
         )
@@ -704,7 +725,7 @@ async def create_generic_processor(
             item_id=created_generic_processor.id,
             item={
                 "processor_file_path": str(generic_processor_cos_path),
-                "status": "FINISHED",
+                "status": GenericProcessorStatus.FINISHED,
             },
             user=user,
         )

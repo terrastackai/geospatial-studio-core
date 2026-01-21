@@ -4,7 +4,7 @@
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from botocore.client import ClientError
 from fastapi import HTTPException
@@ -17,11 +17,13 @@ from gfmstudio.config import settings
 from gfmstudio.cos_client import get_cos_client
 from gfmstudio.inference.types import EventDetailType, EventStatus, ModelStatus
 from gfmstudio.inference.v2 import schemas
-from gfmstudio.inference.v2.models import Model, Task
+from gfmstudio.inference.v2.models import Model, Task, GenericProcessor
 from gfmstudio.log import logger
 
 model_crud = crud.ItemCrud(model=Model)
 task_crud = crud.ItemCrud(model=Task)
+generic_processor_crud = crud.ItemCrud(model=GenericProcessor)
+
 pipelines_bucket_name = settings.PIPELINES_V2_COS_BUCKET
 EXPERIMENTAL_MODEL_NAMING = "sandbox"
 
@@ -201,6 +203,16 @@ def get_pipeline_steps(inference: schemas.InferenceCreateInput, model_obj) -> li
             for step in pipeline_steps
         ]
 
+    if inference.generic_processor_id:
+        # Append generic processor step if provided
+        pipeline_steps.append(
+            {
+                "status": "WAITING",
+                "process_id": "generic-python-processor",
+                "step_number": len(pipeline_steps),
+                # Executable file?
+            }
+        )
     return pipeline_steps
 
 
@@ -211,6 +223,7 @@ def build_inference_config(
     model_data_spec: List[Dict],
     geoserver_push: Dict,
     pipeline_steps: List[Dict],
+    generic_processor: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Build the complete inference configuration dictionary."""
     return {
@@ -222,6 +235,7 @@ def build_inference_config(
         "geoserver_push": geoserver_push,
         "model_access_url": model_obj.model_url,
         "pipeline_steps": pipeline_steps,
+        "generic_processor": generic_processor,
     }
 
 
@@ -266,6 +280,7 @@ def build_inference_pipelines_v2_payload(
         pipeline_steps=inference_config.get("pipeline_steps"),
         post_processing=inference_config.get("post_processing"),
         inferencing=inference_config.get("inferencing", {}),
+        generic_processor=inference_config.get("generic_processor", {})
     )
 
 
@@ -332,3 +347,22 @@ def handle_api_integration(
         detail_type=EventDetailType.TASK_COMPLETE,
         status=EventStatus.COMPLETED,
     )
+
+
+def get_generic_processor(generic_processor_object: GenericProcessor) -> dict:
+
+    """Retrieve generic processor content.
+
+    Returns
+    -------
+    dict
+        Contents of the generic python processor
+    """
+    return {
+            "name": generic_processor_object["name"],
+            "description": generic_processor_object["description"],
+            "processor_parameters": generic_processor_object["processor_parameters"],
+            "processor_file_path": generic_processor_object["processor_file_path"],
+            "status": generic_processor_object["status"],
+            "processor_presigned_url": generic_processor_object["processor_presigned_url"],
+        }

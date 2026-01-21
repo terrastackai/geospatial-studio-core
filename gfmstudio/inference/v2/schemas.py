@@ -120,6 +120,12 @@ class GeoServerPush(BaseModel):
     geoserver_style: Union[str, dict]
     model_config = {"extra": "allow"}
 
+class GenericProcessor(BaseModel):
+    name: str
+    description: Optional[str] = None
+    processor_parameters: Optional[Dict[str, Any]] = None
+    processor_file_path: Optional[str] = None
+    status: Optional[str] = None
 
 class InferenceConfig(BaseModel):
     spatial_domain: SpatialDomain
@@ -130,6 +136,7 @@ class InferenceConfig(BaseModel):
     pipeline_steps: Optional[List[Dict[str, Any]]] = None
     post_processing: Optional[PostProcessing] = None
     fine_tuning_id: Optional[str] = None
+    generic_processor: Optional[GenericProcessor] = None
     maxcc: Optional[int] = 100
 
 
@@ -178,6 +185,7 @@ class InferenceCreateInput(InferenceConfig):
     model_id: Optional[UUID] = None
     inference_output: Optional[Dict[str, Any]] = None
     model_config = {"extra": "allow"}
+    generic_processor_id: Optional[UUID] = None
 
     @model_validator(mode="after")
     def check_model_required(cls, model):
