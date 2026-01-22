@@ -9,7 +9,6 @@ import threading
 import time
 from queue import Queue
 
-import pg8000
 import pg8000.dbapi
 import pg8000.native
 import structlog
