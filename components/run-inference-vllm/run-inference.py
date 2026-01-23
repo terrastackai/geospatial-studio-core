@@ -7,9 +7,10 @@ This component reads the output from preprocessing and puts together a request t
 """
 
 # Dependencies
-# pip install ibm-cos-sdk requests tenacity opentelemetry-distro opentelemetry-exporter-otlp
+# pip install ibm-cos-sdk requests tenacity aiohttp opentelemetry-distro opentelemetry-exporter-otlp
 
 import asyncio
+import shutil
 import aiohttp
 import os
 import json
@@ -56,11 +57,18 @@ number_of_retries_for_inference_status = int(
 
 cos = get_s3_client()
 
-temp_bucket_name = os.environ["temp_bucket_name"]
+temp_bucket_name = os.getenv("temp_bucket_name")
 
 process_id = os.getenv("process_id", "run-inference")
 
 metric_manager = MetricManager(component_name=process_id)
+
+
+def _move_predicted_image(source, destination):
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    shutil.move(source, destination)
+
+    return destination
 
 
 @retry(wait=wait_random(min=30, max=60), stop=stop_after_attempt(6), reraise=True)
@@ -91,10 +99,14 @@ async def make_inference_post_request(
                 json=inference_payload,
                 timeout=aiohttp.ClientTimeout(total=300),  # 5 minute timeout
             ) as inference_response:
-                inference_response.raise_for_status()  # Raise exception for 4xx/5xx status codes
+                if inference_response.status != 200:
+                    error_body = await inference_response.text()
+                    logger.error(f"vLLM Error Response: {error_body}")
+                    inference_response.raise_for_status()
+
                 inference_response_dict = (
                     await inference_response.json()
-                )  # Direct JSON parsing
+                )
         except aiohttp.ClientError as e:
             logger.error(
                 f"HTTP request failed for task {task_id} - inference_id {inference_id}: {str(e)}"
@@ -122,8 +134,13 @@ async def make_inference_post_request(
                 "Inference request timed out after 300s"
             ) from e
 
+    prediction_output = inference_response_dict["data"]["data"]
+    predicted_dest = _move_predicted_image(
+        source=prediction_output,
+        destination=f"{inference_input}_pred.tif",
+    )
     # returns only the output image from the inference resposne
-    return inference_response_dict["data"]["data"]
+    return predicted_dest
 
 
 def _load_json_config(file_path: Path) -> dict:
