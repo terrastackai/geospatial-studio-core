@@ -235,6 +235,19 @@ def process_existing_logs(listen_conn, update_conn):
     """
     try:
         cursor = listen_conn.cursor()
+
+        create_run_log_queue = """
+        CREATE TABLE IF NOT EXISTS public.run_log_queue (
+            experiment_name TEXT,
+            experiment_id INTEGER,
+            run_uuid TEXT,
+            run_name TEXT,
+            status TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        cursor.execute(create_run_log_queue)
+
         cursor.execute(
             "SELECT experiment_id, experiment_name, run_uuid, run_name FROM public.run_log_queue"
         )
