@@ -360,7 +360,7 @@ async def create_inference(
     # Get the data spec for the model
     model_data_spec = inference.model_input_data_spec or model_obj.model_input_data_spec
     geoserver_push = inference.geoserver_push or model_obj.geoserver_push
-    generic_processor = helpers.get_generic_processor(generic_processor_obj) if generic_processor_obj else None or []
+    generic_processor = helpers.get_generic_processor(generic_processor_obj) if generic_processor_obj else []
 
     if not (model_data_spec and geoserver_push):
         raise HTTPException(

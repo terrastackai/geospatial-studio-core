@@ -226,7 +226,8 @@ def build_inference_config(
     generic_processor: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Build the complete inference configuration dictionary."""
-    return {
+    
+    results = {
         **inference.model_dump(),
         "data_connector_config": data_connector_config,
         "model_input_data_spec": model_data_spec,
@@ -235,8 +236,12 @@ def build_inference_config(
         "geoserver_push": geoserver_push,
         "model_access_url": model_obj.model_url,
         "pipeline_steps": pipeline_steps,
-        "generic_processor": generic_processor,
     }
+
+    if generic_processor:
+         results["generic_processor"] = generic_processor
+
+    return results
 
 
 def handle_pipeline_integration(
