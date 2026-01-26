@@ -68,6 +68,11 @@ from gfmstudio.inference.v2.models import Inference
 from gfmstudio.inference.v2.models import Model as InferenceModel
 from gfmstudio.inference.v2.schemas import InferenceCreateInput, InferenceGetResponse
 from gfmstudio.log import logger, loglevel_name
+from gfmstudio.fine_tuning.utils.dataset_handlers import capture_and_upload_job_log
+from gfmstudio.fine_tuning.core.kubernetes import collect_pod_logs
+from gfmstudio.fine_tuning.utils.webhook_event_handlers import upload_logs_cos
+from datetime import datetime
+
 
 BASEDIR = os.path.dirname(os.path.abspath(__file__))
 pipeline_api_url = (
@@ -480,8 +485,24 @@ async def retrieve_tune(
     item = tunes_crud.get_by_id(db=db, item_id=tune_id, user=user)
     if not item:
         raise HTTPException(status_code=404, detail="Tune not found")
+    if item.status != "Failed":
+        logs = await collect_pod_logs(tune_id=tune_id)
+        if logs:
+            # Push log file to COS
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
+            await upload_logs_cos(logs, full_s3_log_file_path)
+    try:
+        tunes_crud.update(
+            db=db,
+            item_id=tune_id,
+            item={"logs": full_s3_log_file_path},
+            protected=False,
+        )
+    except Exception:
+        logger.exception("Tune status was not updated.")
     # create pre-signed url for the logs
-    if item.status == "Failed" and item.logs:
+    if item.logs:
         s3 = object_storage.object_storage_client()
 
         try:
@@ -2424,8 +2445,21 @@ async def retrieve_dataset(
         raise HTTPException(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}
         )
+    
+    # Also get logs if dataset succeeded? -- Yes. -- to it in the webhook event handlers section.
+    if item.status == "Pending":
+        cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
+        # dataset_crud.update(
+        #     db=db,
+        #     item_id=dataset_id,
+        #     item={
+        #         "logs": cos_log_path,
+        #     },
+        #     protected=False,
+        # )
+        item.logs = cos_log_path
 
-    if item.status == "Failed" and item.logs:
+    if item.logs: #==failed and item.logs:
         s3 = object_storage.object_storage_client()
 
         try:

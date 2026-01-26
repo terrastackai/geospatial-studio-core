@@ -269,6 +269,7 @@ async def handle_dataset_factory_webhooks(
             detail={"message": f"Missing Dataset-{dataset_id} not updated."},
         )
     cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
+    # dataset_crud.update(db=session, item_id=dataset_id, item={"logs": cos_log_path}, protected=False,)
     k8s_delete_job_command = f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
     k8s_delete_secret_command = (
         f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
@@ -351,6 +352,8 @@ async def handle_dataset_factory_webhooks(
                         event.detail["error_code"], event.detail["error_message"]
                     ),
                     "training_params": updated_training_params,
+                    #TODO: debug why this is not working for successful uonboarding.
+                    "logs": cos_log_path,
                 },
                 protected=False,
             )
