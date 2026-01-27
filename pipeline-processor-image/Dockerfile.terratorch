@@ -14,7 +14,7 @@ ARG PYTORCH_VERSION=2.7.1
 ################################################################################
 # Stage 1: Base Image with Miniforge
 ################################################################################
-FROM --platform=$BUILDPLATFORM pytorch/pytorch:${PYTORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime AS miniforge
+FROM pytorch/pytorch:${PYTORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime AS miniforge
 USER root
 # Install minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,7 +35,7 @@ RUN mamba install -y -c conda-forge \
 # ################################################################################
 # # Stage 2: Runtime Dependencies
 # ################################################################################
-FROM --platform=$BUILDPLATFORM pytorch/pytorch:${PYTORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime AS runtime
+FROM pytorch/pytorch:${PYTORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime AS runtime
 USER root
 # Install only essential system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
