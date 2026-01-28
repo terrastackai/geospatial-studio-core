@@ -86,7 +86,8 @@ def notify_gfmaas_ui(
         "detail_type": event_detail_type or "Inf:Task:Notify",
         "source": "com.inference-v2-pipelines-service.ibm",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "detail": event_processed_result or {"message": event_status, "task_id": task_id},
+        "detail": event_processed_result
+        or {"message": event_status, "task_id": task_id},
     }
 
     # try-except to capture a failed connection attempt, we want to continue with the inference regardless...
@@ -119,7 +120,9 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
                 with contextlib.redirect_stdout(so):
                     with contextlib.redirect_stderr(se):
                         ("-----INVOKING TASK-----------------------------------")
-                        logger.debug("-----INVOKING TASK-----------------------------------")
+                        logger.debug(
+                            "-----INVOKING TASK-----------------------------------"
+                        )
                         print("-----INVOKING TASK-----------------------------------")
                         logger.debug(f"Task ID: {task_id}")
                         print(f"Task ID: {task_id}")
@@ -141,7 +144,9 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
                             print(f"Return code: {result.returncode}")
                             return result.returncode
                         except subprocess.CalledProcessError as sub_ex:
-                            logger.error(f"Task ID: {task_id} Command: {process_exec} exited with error: {sub_ex}")
+                            logger.error(
+                                f"Task ID: {task_id} Command: {process_exec} exited with error: {sub_ex}"
+                            )
                             if sub_ex.stdout:
                                 error_stdout = sub_ex.stdout.decode("utf-8")
                                 logger.debug(f"Error stdout: {error_stdout}")
@@ -152,10 +157,14 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
                                 print(f"Error stderr: {error_stderr}")
                             return sub_ex.returncode
                         except Exception as ex:
-                            logger.error(f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}")
+                            logger.error(
+                                f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
+                            )
                             return 500
     except Exception as ex:
-        logger.error(f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}")
+        logger.error(
+            f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
+        )
         return 500
 
 
@@ -195,7 +204,6 @@ def grab_new_task(engine, process_id):
                 conn.execute(update_overall_status)
                 conn.commit()
 
-
             logger.info(f">>>>>>>> Returning query info: {query}")
     return query
 
@@ -206,7 +214,9 @@ def update_status_after_run(engine, process_id, inference_id, task_id, new_state
 
     query = None
     with engine.connect() as conn:
-        task_pipeline_sql = text(f"SELECT pipeline_steps FROM {inf_task_table} WHERE task_id = '{task_id}';")
+        task_pipeline_sql = text(
+            f"SELECT pipeline_steps FROM {inf_task_table} WHERE task_id = '{task_id}';"
+        )
         # print(task_pipeline_sql)
         pipeline_steps = conn.execute(task_pipeline_sql).fetchall()[0][0]
 
@@ -272,31 +282,36 @@ def update_status_after_run(engine, process_id, inference_id, task_id, new_state
             },
         )
 
+
 def get_generic_processor_values(inference_folder: str, task_id: str):
-    logger.info(f">>>>>> Detected generic-python-processor, about to read script from inference_config file")
+    logger.info(
+        f">>>>>> Detected generic-python-processor, about to read script from inference_config file"
+    )
     # read the script from the inference_config.yaml file
     inference_config_path = f"{inference_folder}/{inference_id}_config.json"
     with open(inference_config_path, "r") as fp:
         inference_dict = json.load(fp)
 
     # Get all the generic python processor config
-    python_generic_processor_config = inference_dict.get('generic_processor', None)
+    python_generic_processor_config = inference_dict.get("generic_processor", None)
     if python_generic_processor_config is None:
-        logger.error(f">>>>>> No generic_processor found in inference_config.yaml for task {task_id}, exiting with error")
+        logger.error(
+            f">>>>>> No generic_processor found in inference_config.yaml for task {task_id}, exiting with error"
+        )
         update_status_after_run(engine, process_id, inference_id, task_id, "FAILED")
 
         return None
 
     name, status, description, processor_file_path, processor_parameters = (
-            python_generic_processor_config.get(k, d)
-            for k, d in [
-                ("name", None),
-                ("status", None),
-                ("description", None),
-                ("processor_file_path", None),
-                ("processor_parameters", {}),
-            ]
-        )
+        python_generic_processor_config.get(k, d)
+        for k, d in [
+            ("name", None),
+            ("status", None),
+            ("description", None),
+            ("processor_file_path", None),
+            ("processor_parameters", {}),
+        ]
+    )
 
     # if the status is failed/pending, raise error to warn user that the script is not uploaded to COS
     if status not in ["FINISHED"]:
@@ -306,10 +321,10 @@ def get_generic_processor_values(inference_folder: str, task_id: str):
         update_status_after_run(engine, process_id, inference_id, task_id, "FAILED")
 
         return None
-    
+
     # Initialize full_dest_path to None in case processor_file_path is not provided
     full_dest_path = None
-    
+
     # if the status is finished, proceed to copy the script to the task folder
     if processor_file_path:
         bucket_path: Path = Path(f"{generic_processor_folder}/{processor_file_path}")
@@ -323,11 +338,14 @@ def get_generic_processor_values(inference_folder: str, task_id: str):
         if bucket_path.is_file():
             shutil.copy2(bucket_path, full_dest_path)
         else:
-            logger.error(f">>>>>> generic_processor script file not found in storage for task {task_id} at path {bucket_path}.")
+            logger.error(
+                f">>>>>> generic_processor script file not found in storage for task {task_id} at path {bucket_path}."
+            )
             update_status_after_run(engine, process_id, inference_id, task_id, "FAILED")
             return None
-    
+
     return name, status, full_dest_path, processor_parameters
+
 
 def validate_python_module(file_path: str):
     """Validate if the given file path is a valid Python module."""
@@ -341,7 +359,7 @@ def validate_python_module(file_path: str):
         # raise IsADirectoryError(
         #     f"Path is a directory, not a Python file: {file_path}. "
         # )
-    if not file_path.endswith('.py'):
+    if not file_path.endswith(".py"):
         logger.error((f"Path is not a Python file (.py): {file_path}"))
         return False
         # raise ValueError(f"Path is not a Python file (.py): {file_path}")
@@ -360,43 +378,47 @@ def write_logs(
     with open(file=std_log_name, mode="w") as se:
         se.write(f">>>>>> {log_content}\n")
 
-def find_main_block_line(file_path:str):
+
+def find_main_block_line(file_path: str):
     """Find main block using AST - ignores comments/strings
-    
+
     Returns the line number (0-indexed) of the last occurrence of:
     if __name__ == "__main__":
-    
+
     This handles cases where there might be multiple __name__ checks
     by returning the last one, which is typically the actual main entry point.
     """
 
     # Read the file
-    with open(file_path, "r", encoding='utf-8') as file:
+    with open(file_path, "r", encoding="utf-8") as file:
         code_string = file.read()
     tree = ast.parse(code_string)
-    
+
     main_block_line = None
-    
+
     for node in ast.walk(tree):
         if isinstance(node, ast.If):
             # Check if it's the __name__ == "__main__" pattern
             if isinstance(node.test, ast.Compare):
                 # Check left side is __name__
-                if (isinstance(node.test.left, ast.Name) and
-                    node.test.left.id == '__name__'):
+                if (
+                    isinstance(node.test.left, ast.Name)
+                    and node.test.left.id == "__name__"
+                ):
                     # Check operator is == (Eq)
                     if any(isinstance(op, ast.Eq) for op in node.test.ops):
                         # Check right side is "__main__"
-                        if (len(node.test.comparators) > 0 and
-                            isinstance(node.test.comparators[0], ast.Constant) and
-                            node.test.comparators[0].value == "__main__"):
+                        if (
+                            len(node.test.comparators) > 0
+                            and isinstance(node.test.comparators[0], ast.Constant)
+                            and node.test.comparators[0].value == "__main__"
+                        ):
                             # Store this line, will keep the last occurrence
                             main_block_line = node.lineno - 1  # AST is 1-indexed
-    
+
     if main_block_line is None:
-        logger.error( "No 'if __name__ == \"__main__\":' found")
-        
-    
+        logger.error("No 'if __name__ == \"__main__\":' found")
+
     return main_block_line
 
 
@@ -534,15 +556,25 @@ while True:
         logger.info(f">>>>>> Return code: {return_value}")
 
         if return_value == 0:
-            logger.info(f">>>>>> Finished running code for {task_id}, about to update the status db")
-            update_status_after_run(engine, process_id, inference_id, task_id, "FINISHED")
+            logger.info(
+                f">>>>>> Finished running code for {task_id}, about to update the status db"
+            )
+            update_status_after_run(
+                engine, process_id, inference_id, task_id, "FINISHED"
+            )
 
         elif return_value == stop_exit_code:
-            logger.info(f">>>>>> Stop running code for {task_id}, about to update the status db")
-            update_status_after_run(engine, process_id, inference_id, task_id, "STOPPED")
+            logger.info(
+                f">>>>>> Stop running code for {task_id}, about to update the status db"
+            )
+            update_status_after_run(
+                engine, process_id, inference_id, task_id, "STOPPED"
+            )
 
         else:
-            logger.info(f">>>>>> Failed running code for {task_id}, about to update the status db")
+            logger.info(
+                f">>>>>> Failed running code for {task_id}, about to update the status db"
+            )
             update_status_after_run(engine, process_id, inference_id, task_id, "FAILED")
 
     else:
