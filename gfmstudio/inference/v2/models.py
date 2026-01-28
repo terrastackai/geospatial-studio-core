@@ -25,7 +25,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import column_property, relationship
 
 from ...common.models import AbstractBase, utc_now
-from ..types import ModelStatus, GenericProcessorStatus
+from ..types import GenericProcessorStatus, ModelStatus
 
 
 class Model(AbstractBase):

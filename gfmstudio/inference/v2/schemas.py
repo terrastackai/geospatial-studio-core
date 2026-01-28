@@ -120,12 +120,14 @@ class GeoServerPush(BaseModel):
     geoserver_style: Union[str, dict]
     model_config = {"extra": "allow"}
 
+
 class GenericProcessor(BaseModel):
     name: str
     description: Optional[str] = None
     processor_parameters: Optional[Dict[str, Any]] = None
     processor_file_path: Optional[str] = None
     status: Optional[str] = None
+
 
 class InferenceConfig(BaseModel):
     spatial_domain: SpatialDomain

@@ -3,8 +3,8 @@
 
 
 import datetime
-import os
 import json
+import os
 import uuid
 from typing import Optional
 
@@ -15,13 +15,12 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    File,
+    Form,
     HTTPException,
     Query,
     Request,
     UploadFile,
-    Depends,
-    File,
-    Form,
 )
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -53,18 +52,18 @@ from gfmstudio.inference.integration_adaptors.utils import (
 )
 from gfmstudio.inference.types import (
     EventDetailType,
+    GenericProcessorStatus,
     InferenceStatus,
     ModelStatus,
     transition_to,
-    GenericProcessorStatus
 )
 from gfmstudio.inference.v2 import helpers, schemas
 from gfmstudio.inference.v2.models import (
+    GenericProcessor,
     Inference,
     Model,
     Notification,
     Task,
-    GenericProcessor,
 )
 from gfmstudio.inference.v2.schemas import DataAdvisorRequestSchema
 from gfmstudio.inference.v2.services import (
@@ -340,7 +339,6 @@ async def create_inference(
         if inference.generic_processor_id
         else None
     )
-    
 
     # Validate and retrieve model
 
@@ -360,7 +358,11 @@ async def create_inference(
     # Get the data spec for the model
     model_data_spec = inference.model_input_data_spec or model_obj.model_input_data_spec
     geoserver_push = inference.geoserver_push or model_obj.geoserver_push
-    generic_processor = helpers.get_generic_processor(generic_processor_obj) if generic_processor_obj else []
+    generic_processor = (
+        helpers.get_generic_processor(generic_processor_obj)
+        if generic_processor_obj
+        else []
+    )
 
     if not (model_data_spec and geoserver_push):
         raise HTTPException(
@@ -373,7 +375,7 @@ async def create_inference(
 
     if not generic_processor:
         logger.info("No Generic Processor component provided for this inference.")
-        
+
     # Get the data source details from the catalogue
     data_connector_config = helpers.get_data_connector_config(
         inference, model_data_spec
@@ -383,13 +385,13 @@ async def create_inference(
 
     # Build inference configuration
     inference_config = helpers.build_inference_config(
-        inference = inference,
-        model_obj = model_obj,
-        data_connector_config = data_connector_config,
-        model_data_spec = model_data_spec,
-        geoserver_push = geoserver_push,
-        pipeline_steps = pipeline_steps,
-        generic_processor = generic_processor
+        inference=inference,
+        model_obj=model_obj,
+        data_connector_config=data_connector_config,
+        model_data_spec=model_data_spec,
+        geoserver_push=geoserver_push,
+        pipeline_steps=pipeline_steps,
+        generic_processor=generic_processor,
     )
 
     # Create inference record
@@ -705,7 +707,7 @@ async def create_generic_processor(
             Body=generic_processor_file.file,
         )
     except Exception as e:
-        failed_update = generic_processor_crud.update(
+        generic_processor_crud.update(
             db=db,
             item_id=created_generic_processor.id,
             item={"status": GenericProcessorStatus.FAILED},
