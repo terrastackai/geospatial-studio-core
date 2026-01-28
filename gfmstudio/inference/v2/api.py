@@ -371,6 +371,9 @@ async def create_inference(
             ),
         )
 
+    if not generic_processor:
+        logger.info("No Generic Processor component provided for this inference.")
+        
     # Get the data source details from the catalogue
     data_connector_config = helpers.get_data_connector_config(
         inference, model_data_spec
