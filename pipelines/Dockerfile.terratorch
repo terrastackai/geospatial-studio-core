@@ -52,6 +52,11 @@ RUN curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
     && mkdir -p ~/.kube \
     && chmod 700 ~/.kube
 WORKDIR /terratorch
+
+ENV HF_HOME=/app/models/huggingface_cache \
+    TERRATORCH_SEGMENTATION_IO_PROCESSOR_CONFIG='{"output_path": "/data/output/"}' \
+    PATH="/home/appuser/.local/bin:${PATH}"
+
 # Install Python dependencies with cache mount for faster rebuilds
 RUN pip install --upgrade pip && \
     pip install --timeout=7200 \
@@ -107,21 +112,27 @@ RUN mkdir -p \
 # Setup UTF-8 locale
 ENV LC_ALL=C.UTF-8 \
     LANG=C.UTF-8 \
-    LC_CTYPE=C.UTF-8
-# Copy application files
-COPY --chown=appuser:appuser ./components/terratorch_inference/terratorch_inference.py /opt/app-root/src/
-COPY --chown=appuser:appuser ./components/terratorch_inference/terratorch_inference_utils.py /opt/app-root/src/
-COPY --chown=appuser:appuser ./general_libraries/gfm_logger /opt/app-root/src/gfm_logger
-COPY --chown=appuser:appuser ./general_libraries/gfm_data_processing /opt/app-root/src/gfm_data_processing
-COPY --chown=appuser:appuser ./general_libraries/orchestrate_wrapper/orchestrate_wrapper.py /opt/app-root/src/
+    LC_CTYPE=C.UTF-8 \
+    # Default to Standard mode, but can be overridden to 'vllm' at runtime
+    APP_MODE=standard
 
+# Copy application files
 RUN chmod -R 777 /.cache /.config/matplotlib /opt/app-root/src/
+COPY --chown=appuser:appgroup ./components/terratorch_inference/terratorch_inference.py /opt/app-root/src/
+COPY --chown=appuser:appgroup ./components/terratorch_inference/terratorch_inference_utils.py /opt/app-root/src/
+COPY --chown=appuser:appgroup ./general_libraries/gfm_logger /opt/app-root/src/gfm_logger
+COPY --chown=appuser:appgroup ./general_libraries/gfm_data_processing /opt/app-root/src/gfm_data_processing
+COPY --chown=appuser:appgroup ./general_libraries/orchestrate_wrapper/orchestrate_wrapper.py /opt/app-root/src/
+COPY --chown=appuser:appgroup ./entrypoint.sh /app/entrypoint.sh
+COPY --chown=appuser:appgroup ./healthcheck.sh /app/healthcheck.sh
+
+RUN chmod +x /app/entrypoint.sh /app/healthcheck.sh
 
 # Switch to non-root user
 USER appuser
 WORKDIR /opt/app-root/src
-# Health check (optional but recommended)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import terratorch; print('OK')" || exit 1
-# Default command
-CMD ["python", "/opt/app-root/src/orchestrate_wrapper.py"]
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD ["/bin/bash", "/app/healthcheck.sh"]
+
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
