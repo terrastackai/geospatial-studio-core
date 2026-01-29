@@ -1,0 +1,17 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+.env
+*.tif
+*.cwl
+*.job.yaml
+*.generated
+test_geoserver_data
+__pycache__
+.DS_Store
+test_pgdata
+geoserver-rest
+*.log
+.ipynb_checkpoints
+tasks

@@ -1,0 +1,20 @@
+{
+    "task_id": "6f031be7-task_0",
+    "data_connector": "sentinel_aws",
+    "bbox": [
+        92.4872138472571,
+        26.194226154319196,
+        92.70714832354558,
+        26.32733412473285
+    ],
+    "date": "2024-07-26",
+    "imputed_input_image": [
+        "/data/6f031be7/6f031be7-task_0/6f031be7-task_0_S2L2A_2024-07-26_imputed_S2Hand.tif"
+    ],
+    "original_input_image": [
+        "/data/6f031be7/6f031be7-task_0/6f031be7-task_0_S2L2A_2024-07-26_S2Hand.tif"
+    ],
+    "model_output_image": "/data/6f031be7/6f031be7-task_0/6f031be7-task_0_S2L2A_2024-07-26_imputed_S2Hand_pred.tif",
+    "model_input_original_image_rgb": "/data/6f031be7/6f031be7-task_0/6f031be7-task_0_S2L2A_2024-07-26_S2Hand_rgb.tif",
+    "model_output_image_masked": "/data/6f031be7/6f031be7-task_0/6f031be7-task_0_S2L2A_2024-07-26_imputed_S2Hand_masked_pred_masked.tif"
+}
