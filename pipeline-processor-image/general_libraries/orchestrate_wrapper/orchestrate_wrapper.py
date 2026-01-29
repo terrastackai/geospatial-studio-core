@@ -359,7 +359,6 @@ def validate_python_module(file_path: str):
     if not file_path.endswith(".py"):
         logger.error((f"Path is not a Python file (.py): {file_path}"))
         return False
-        # raise ValueError(f"Path is not a Python file (.py): {file_path}")
 
     return True
 
