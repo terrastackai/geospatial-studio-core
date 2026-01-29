@@ -2,24 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-import os
 import ast
-import time
-import json
-from typing import Any
-import random
-import logging
-import requests
-import subprocess
 import contextlib
+import json
+import logging
+import os
+import random
 import shutil
-from pathlib import Path
+import subprocess
+import time
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 from urllib.parse import urljoin
-from sqlalchemy import create_engine, text
 
 # Uncomment next 2 lines for local testing
 import dotenv
+import requests
+from sqlalchemy import create_engine, text
 
 dotenv.load_dotenv()
 
