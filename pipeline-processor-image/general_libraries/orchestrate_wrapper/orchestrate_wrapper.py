@@ -356,9 +356,6 @@ def validate_python_module(file_path: str):
     if os.path.isdir(file_path):
         logger.error(f"Path is a directory, not a Python file: {file_path}")
         return False
-        # raise IsADirectoryError(
-        #     f"Path is a directory, not a Python file: {file_path}. "
-        # )
     if not file_path.endswith(".py"):
         logger.error((f"Path is not a Python file (.py): {file_path}"))
         return False
