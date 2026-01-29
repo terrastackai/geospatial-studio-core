@@ -3,6 +3,7 @@
 
 
 import datetime
+import json
 import os
 import uuid
 from typing import Optional
@@ -10,8 +11,19 @@ from typing import Optional
 import boto3
 import httpx
 from botocore.client import ClientError, Config
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from sse_starlette import EventSourceResponse
@@ -40,12 +52,19 @@ from gfmstudio.inference.integration_adaptors.utils import (
 )
 from gfmstudio.inference.types import (
     EventDetailType,
+    GenericProcessorStatus,
     InferenceStatus,
     ModelStatus,
     transition_to,
 )
 from gfmstudio.inference.v2 import helpers, schemas
-from gfmstudio.inference.v2.models import Inference, Model, Notification, Task
+from gfmstudio.inference.v2.models import (
+    GenericProcessor,
+    Inference,
+    Model,
+    Notification,
+    Task,
+)
 from gfmstudio.inference.v2.schemas import DataAdvisorRequestSchema
 from gfmstudio.inference.v2.services import (
     cleanup_autodeployed_model_resources,
@@ -62,6 +81,7 @@ model_crud = crud.ItemCrud(model=Model)
 task_crud = crud.ItemCrud(model=Task)
 inference_crud = crud.ItemCrud(model=Inference)
 notification_crud = crud.ItemCrud(model=Notification)
+generic_processor_crud = crud.ItemCrud(model=GenericProcessor)
 
 EXPERIMENTAL_MODEL_NAMING = "sandbox"
 pipelines_bucket_name = settings.PIPELINES_V2_COS_BUCKET
@@ -311,7 +331,17 @@ async def create_inference(
 ):
     user = auth[0]
 
+    ## ToDO: Get extra params for the generic processor component and add it to the inference config
+    generic_processor_obj = (
+        await retrieve_generic_processor(
+            db=db, generic_processor_id=inference.generic_processor_id, auth=auth
+        )
+        if inference.generic_processor_id
+        else None
+    )
+
     # Validate and retrieve model
+
     model_obj = helpers.get_inference_model(db, inference, user)
 
     # Check if model is ready for inference
@@ -328,6 +358,11 @@ async def create_inference(
     # Get the data spec for the model
     model_data_spec = inference.model_input_data_spec or model_obj.model_input_data_spec
     geoserver_push = inference.geoserver_push or model_obj.geoserver_push
+    generic_processor = (
+        helpers.get_generic_processor(generic_processor_obj)
+        if generic_processor_obj
+        else []
+    )
 
     if not (model_data_spec and geoserver_push):
         raise HTTPException(
@@ -338,20 +373,25 @@ async def create_inference(
             ),
         )
 
+    if not generic_processor:
+        logger.info("No Generic Processor component provided for this inference.")
+
     # Get the data source details from the catalogue
     data_connector_config = helpers.get_data_connector_config(
         inference, model_data_spec
     )
+    # Update steps if inference.generic_processor_id is provided
     pipeline_steps = helpers.get_pipeline_steps(inference, model_obj)
 
     # Build inference configuration
     inference_config = helpers.build_inference_config(
-        inference,
-        model_obj,
-        data_connector_config,
-        model_data_spec,
-        geoserver_push,
-        pipeline_steps,
+        inference=inference,
+        model_obj=model_obj,
+        data_connector_config=data_connector_config,
+        model_data_spec=model_data_spec,
+        geoserver_push=geoserver_push,
+        pipeline_steps=pipeline_steps,
+        generic_processor=generic_processor,
     )
 
     # Create inference record
@@ -609,6 +649,205 @@ async def cancel_inference(
             "msg": "Cancel inference request accepted.Inference tasks will be terminated gracefully."
         },
     )
+
+
+# ***************************************************
+# Generic Processor component
+# ***************************************************
+
+
+def parse_generic_processor_form_data(
+    generic_processor_metadata: str = Form(...),
+) -> schemas.GenericProcessorCreate:
+    """Parse form data for Generic Processor creation."""
+    try:
+        return schemas.GenericProcessorCreate(**json.loads(generic_processor_metadata))
+    except (json.JSONDecodeError, ValidationError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail=str(e),
+        )
+
+
+@router.post(
+    "/generic-processor",
+    response_model=schemas.GenericProcessorGetResponse,
+    tags=["Tasks / Generic processor"],
+    status_code=201,
+)
+async def create_generic_processor(
+    generic_processor: str = Depends(parse_generic_processor_form_data),
+    generic_processor_file: UploadFile = File(...),
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+
+    # Create generic processor record in DB
+    created_generic_processor = generic_processor_crud.create(
+        db, item=generic_processor, user=user
+    )
+    # Upload generic processor file to COS
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=settings.OBJECT_STORAGE_KEY_ID,
+        aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
+        endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
+        config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
+        verify=(settings.ENVIRONMENT.lower() != "local"),
+    )
+    generic_processor_cos_path = (
+        f"{str(created_generic_processor.id)}/{generic_processor_file.filename}"
+    )
+
+    try:
+        s3.put_object(
+            Bucket=settings.GENERIC_PROCESSOR_BUCKET,
+            Key=generic_processor_cos_path,
+            Body=generic_processor_file.file,
+        )
+    except Exception as e:
+        generic_processor_crud.update(
+            db=db,
+            item_id=created_generic_processor.id,
+            item={"status": GenericProcessorStatus.FAILED},
+            user=user,
+        )
+        logger.exception(
+            "An error occured when uploading generic processor file to COS."
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Failed uploading generic processor file to object storage {e}."
+            },
+        )
+
+    # Update the file_path in COS in the DB record
+    try:
+        updated_generic_processor = generic_processor_crud.update(
+            db=db,
+            item_id=created_generic_processor.id,
+            item={
+                "processor_file_path": str(generic_processor_cos_path),
+                "status": GenericProcessorStatus.FINISHED,
+            },
+            user=user,
+        )
+
+        # Update to dict for response
+        updated_generic_processor.processor_file_path = generic_processor_cos_path
+
+        return updated_generic_processor
+
+    except Exception as e:
+        logger.exception(
+            "An error occured when updating generic processor record in DB."
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Failed updating generic processor record in DB {e}."},
+        )
+
+
+@router.get(
+    "/generic-processor/{generic_processor_id}",
+    response_model=schemas.GenericProcessorGetResponse,
+    tags=["Tasks / Generic processor"],
+)
+async def retrieve_generic_processor(
+    generic_processor_id: uuid.UUID,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+    item = generic_processor_crud.get_by_id(db, generic_processor_id, user=user)
+    if not item:
+        raise HTTPException(
+            status_code=404, detail="Generic Processor component not found"
+        )
+
+    # Grab file from COS using the path stored in DB
+    if item.processor_file_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Generic Processor component file path not found",
+        )
+
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=settings.OBJECT_STORAGE_KEY_ID,
+        aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
+        endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
+        config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
+        verify=(settings.ENVIRONMENT.lower() != "local"),
+    )
+
+    try:
+        download_file_path_url = generate_download_presigned_url(
+            s3=s3,
+            object_key=item.processor_file_path,
+            bucket_name=settings.GENERIC_PROCESSOR_BUCKET,
+            expiration=28800,
+        )
+    except Exception:
+        logger.exception("An error occured when generating download presigned-url.")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Failed creating download presigned url."},
+        )
+
+    updated_dict = item.__dict__
+
+    updated_dict["processor_presigned_url"] = download_file_path_url
+
+    return updated_dict
+
+
+@router.get(
+    "/generic-processor",
+    response_model=schemas.GenericProcessorListResponse,
+    tags=["Tasks / Generic processor"],
+)
+async def list_generic_processors(
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+
+    count, items = generic_processor_crud.get_all(
+        db=db,
+        user=user,
+        total_count=True,
+    )
+
+    if not items:
+        raise HTTPException(
+            status_code=404, detail="Generic Processor components not found"
+        )
+
+    return {"results": items, "total_records": count}
+
+
+@router.delete(
+    "/generic-processor/{generic_processor_id}",
+    tags=["Tasks / Generic processor"],
+    status_code=204,
+)
+async def delete_generic_processor(
+    generic_processor_id: uuid.UUID,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    user = auth[0]
+    item = generic_processor_crud.get_by_id(db, generic_processor_id, user=user)
+    if not item:
+        raise HTTPException(
+            status_code=404, detail="Generic Processor component not found"
+        )
+
+    generic_processor_crud.soft_delete(db, item_id=generic_processor_id, user=user)
+    return item
 
 
 # ***************************************************
