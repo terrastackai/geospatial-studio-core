@@ -1,4 +1,4 @@
-![Geospatial Studio banner](./docs/images/banner.png)
+![Geospatial Studio banner](../docs/img/banner.png)
 
 # 🌍 GEO Studio: Pipelines
 

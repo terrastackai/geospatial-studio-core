@@ -8,7 +8,7 @@
 
 ### Regularization Source Code developed by GeoAI (https://opengeoai.org)
 
-We thank Qiusheng Wu for the regularization source code which is included in the postprocess-generic-single component.
+We thank Qiusheng Wu for the regularization source code which is included in the pipelines postprocess-generic-single component.
 The copyright notice is intact in the source code and also here:
 
 -----
