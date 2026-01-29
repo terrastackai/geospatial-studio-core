@@ -384,7 +384,8 @@ def find_data_bbox(connector: DataConnector, payload: DataAdvisorRequestSchema):
                     response["unique_dates"] = []
                     response.pop("available_data")
                     response["message"] = (
-                        f"The modalities {collections_with_no_data} do not have any data for the selected dates. Try the Bef_Days: {before_mydatetimes} or Aft_Days: {after_mydatetimes}"
+                        f"The modalities {collections_with_no_data} do not have any data for the selected dates. "
+                        f"Try the Bef_Days: {before_mydatetimes} or Aft_Days: {after_mydatetimes}"
                     )
                 results.append(response)
             return {"results": results}

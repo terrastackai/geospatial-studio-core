@@ -4,7 +4,7 @@
 
 import pytest
 
-from gfmstudio.inference.v2.helpers import merge_bounding_boxes
+from gfmstudio.inference.v2.services import merge_bounding_boxes
 
 
 class TestMergeBoundingBoxes:

@@ -312,7 +312,9 @@ class LossFunction(BaseModel):
     type : Optional[str]
         The type of loss function to be used. Defaults to "CrossEntropyLoss".
     avg_non_ignore : bool
-        If True, the loss is averaged only over non-ignored targets, where the labels are present. Ignored targets (e.g., missing labels) are excluded from the averaging. Defaults to True.
+        If True, the loss is averaged only over non-ignored targets,
+        where the labels are present. Ignored targets (e.g., missing labels)
+        are excluded from the averaging. Defaults to True.
 
     Examples
     --------
@@ -328,7 +330,10 @@ class LossFunction(BaseModel):
     )
     avg_non_ignore: bool = Field(
         default=True,
-        description="The loss is only averaged over non-ignored targets (ignored targets are usually where labels are missing in the dataset) if this is True",
+        description=(
+            "The loss is only averaged over non-ignored targets "
+            "(ignored targets are usually where labels are missing in the dataset) if this is True"
+        ),
     )
 
 
@@ -339,7 +344,8 @@ class AuxLossFunction(LossFunction):
     Attributes
     ----------
     loss_weight : Optional[float]
-        The weight to apply to the auxiliary loss. This controls the contribution of this loss to the total loss. Defaults to 0.2.
+        The weight to apply to the auxiliary loss.
+        This controls the contribution of this loss to the total loss. Defaults to 0.2.
 
     Examples
     --------
@@ -543,9 +549,13 @@ class DataLoading(BaseModel):
     --------
     Create a DataLoading object:
 
-    >>> custom_data_loading = DataLoading(batch_size=16, workers_per_gpu=4, random_flip=1, bands=['RED', 'GREEN', 'BLUE'], tuning_bands=['GREEN', 'BLUE'])
+    >>> custom_data_loading = DataLoading(
+            batch_size=16, workers_per_gpu=4, random_flip=1,
+            bands=['RED', 'GREEN', 'BLUE'], tuning_bands=['GREEN', 'BLUE'])
     >>> print(custom_data_loading)
-    DataLoading(batch_size=16, bands=['RED', 'GREEN', 'BLUE'], workers_per_gpu=4, random_flip=1, tuning_bands=['GREEN', 'BLUE'])
+    DataLoading(
+        batch_size=16, bands=['RED', 'GREEN', 'BLUE'],
+        workers_per_gpu=4, random_flip=1, tuning_bands=['GREEN', 'BLUE'])
     """
 
     batch_size: Optional[int] = None
@@ -787,22 +797,27 @@ class BaseModelNecks(BaseModel):
 
 class AuxiliaryHead(DecodeHead):
     """
-    Auxiliary head used in a neural network model, extending the main decode head, and including an auxiliary loss function.
+    Auxiliary head used in a neural network model, extending the main decode head,
+    and including an auxiliary loss function.
 
     Attributes
     ----------
     channels : Optional[int]
-        Number of channels at each block of the auxiliary head, except the final one. Inherited from `DecodeHead`. Defaults to 32.
+        Number of channels at each block of the auxiliary head, except the final one. Inherited from `DecodeHead`.
+        Defaults to 32.
     num_convs : Optional[int]
-        Number of convolutional blocks in the auxiliary head, excluding the final block. Inherited from `DecodeHead`. Defaults to 1.
+        Number of convolutional blocks in the auxiliary head, excluding the final block. Inherited from `DecodeHead`.
+        Defaults to 1.
     loss_decode : Optional[AuxLossFunction]
-        Defines the auxiliary loss function used for training. Defaults to an `AuxLossFunction` object with a loss weight of 0.2.
+        Defines the auxiliary loss function used for training.
+        Defaults to an `AuxLossFunction` object with a loss weight of 0.2.
 
     Examples
     --------
     Create a `AuxiliaryHead` object:
 
-    >>> custom_aux_head = AuxiliaryHead(channels=64, num_convs=2, loss_decode=AuxLossFunction(type='DiceLoss', loss_weight=0.3))
+    >>> custom_aux_head = AuxiliaryHead(
+            channels=64, num_convs=2, loss_decode=AuxLossFunction(type='DiceLoss', loss_weight=0.3))
     >>> print(custom_aux_head)
     AuxiliaryHead(
         channels=64,
@@ -866,17 +881,21 @@ class TemplateUserDefinedParams(BaseModel):
     dataset_id : Optional[str]
         The dataset id. Defaults to None.
     data : Optional[DataLoading]
-        Parameters for configuring data loading, including batch size and number of workers. Defaults to a DataLoading object.
+        Parameters for configuring data loading, including batch size and number of workers.
+        Defaults to a DataLoading object.
     runner : Optional[Runner]
-        Defines training parameters such as the number of epochs and early stopping criteria. Defaults to a Runner object.
+        Defines training parameters such as the number of epochs and early stopping criteria.
+        Defaults to a Runner object.
     optimizer : Optional[Optimizer]
-        The optimizer configuration, including type (e.g., Adam) and learning rate settings. Defaults to an Optimizer object.
+        The optimizer configuration, including type (e.g., Adam) and learning rate settings.
+        Defaults to an Optimizer object.
     lr_config : Optional[LRPolicy]
         Learning rate policy configuration, including warmup settings. Defaults to None.
     evaluation : Optional[Evaluation]
         Parameters for model evaluation, such as validation frequency and metric. Defaults to an Evaluation object.
     model : Optional[Model]
-        The model configuration, including whether to freeze the backbone and the definition of the decode and auxiliary heads. Defaults to a Model object.
+        The model configuration, including whether to freeze the backbone and the
+        definition of the decode and auxiliary heads. Defaults to a Model object.
     backbone_model_id : Optional[str]
         Base model id. Defaults to None.
 
@@ -901,7 +920,9 @@ class TemplateUserDefinedParams(BaseModel):
         optimizer=Optimizer(type='SGD', lr='0.01', weight_decay=None),
         lr_config=None,
         evaluation=Evaluation(interval=5, metric='accuracy'),
-        model=Model(frozen_backbone=True, decode_head=DecodeHead(channels=32, num_convs=1, loss_decode=LossFunction(type='CrossEntropyLoss', avg_non_ignore=True)), auxiliary_head=None),
+        model=Model(frozen_backbone=True, decode_head=DecodeHead(
+            channels=32, num_convs=1, loss_decode=LossFunction(
+                type='CrossEntropyLoss', avg_non_ignore=True)), auxiliary_head=None),
         backbone_model_id=None
     )
     """
@@ -1027,7 +1048,10 @@ class TuneTemplateParameters(
     )
     mlflow_tags: Optional[dict] = Field(
         default=dict,
-        description="Mlflow tags to uniquely match an experiment with unique identifiers e.g user email address, name ...",
+        description=(
+            "Mlflow tags to uniquely match an experiment with unique"
+            "identifiers e.g user email address, name ..."
+        ),
     )
 
     # Fields `num_layers` from the BaseModels

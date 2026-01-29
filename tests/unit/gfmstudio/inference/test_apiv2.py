@@ -423,7 +423,8 @@ class InferenceUseCaseSuite(ResourceTestSuiteBase):
         response = client.post(self.endpoint, json=self.data)
         assert response.status_code == 201
 
-        # 4. Assert that inference created in 3 has response.status_code == 201 and response.json()["status"] == "PENDING"
+        # 4. Assert that inference created in 3 has
+        # response.status_code == 201 and response.json()["status"] == "PENDING"
         assert response.json()["status"] == "PENDING"
         inf_id = response.json()["id"]
 

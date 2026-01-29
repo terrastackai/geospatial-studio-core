@@ -27,7 +27,10 @@ def invoke_pipelines_orchestration_service(
         )
         data = payload
     elif deploy_model:
-        JOB_ENDPOINT = f"{settings.INFERENCE_PIPELINE_BASE_URL}/pipelines/{settings.DEPLOY_FOR_INFERENCE_PIPELINE_ID}/jobs"
+        JOB_ENDPOINT = (
+            f"{settings.INFERENCE_PIPELINE_BASE_URL}/pipelines"
+            "/{settings.DEPLOY_FOR_INFERENCE_PIPELINE_ID}/jobs"
+        )
     else:
         JOB_ENDPOINT = f"{settings.INFERENCE_PIPELINE_BASE_URL}/pipelines/{settings.INFERENCE_PIPELINE_ID}/jobs"
 
