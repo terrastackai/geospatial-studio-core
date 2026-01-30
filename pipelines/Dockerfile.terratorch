@@ -55,13 +55,14 @@ WORKDIR /terratorch
 
 ENV HF_HOME=/app/models/huggingface_cache \
     TERRATORCH_SEGMENTATION_IO_PROCESSOR_CONFIG='{"output_path": "/data/output/"}' \
-    PATH="/home/appuser/.local/bin:${PATH}"
+    PATH="/home/appuser/.local/bin:${PATH}" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # Install Python dependencies with cache mount for faster rebuilds
 RUN pip install --upgrade pip && \
     pip install --timeout=7200 \
     terratorch[vllm]==1.2.1 \
-    # "vllm>=0.6.0" \
     'diffusers<=0.34.0' \
     ipython \
     nbformat \
@@ -121,8 +122,11 @@ RUN chmod +x /app/entrypoint.sh /app/healthcheck.sh
 
 # Switch to non-root user
 USER appuser
+
 WORKDIR /opt/app-root/src
+
 EXPOSE 8000
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD ["/bin/bash", "/app/healthcheck.sh"]
 
