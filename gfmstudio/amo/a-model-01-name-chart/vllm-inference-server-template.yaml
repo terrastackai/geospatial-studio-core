@@ -1,0 +1,208 @@
+# © Copyright IBM Corporation 2026
+# SPDX-License-Identifier: Apache-2.0
+
+# GFM Inference Server - Automated Deployment Template
+# This template is designed for automated model deployment services
+#
+# PLACEHOLDERS TO REPLACE:
+# - ${MODEL_NAME} - Name of the model being deployed (e.g., "my-model")
+# - ${NAMESPACE} - Target Kubernetes namespace
+# - ${ENABLE_KSERVE} - "true" or "false" to toggle KServe InferenceService
+# - ${IMAGE_REPOSITORY} - Container image repository
+# - ${IMAGE_TAG} - Container image tag
+# - ${IMAGE_PULL_SECRET} - Name of the image pull secret
+# - ${SERVICE_ACCOUNT} - Service account name
+# - ${MODELS_PVC} - PVC name for models storage
+# - ${INFERENCE_SHARED_PVC} - PVC name for shared inference data
+# - ${GPU_COUNT} - Number of GPUs to request (e.g., "1")
+# - ${CPU_LIMIT} - CPU limit (e.g., "2000m")
+# - ${MEMORY_LIMIT} - Memory limit (e.g., "8Gi")
+# - ${CPU_REQUEST} - CPU request (e.g., "1000m")
+# - ${MEMORY_REQUEST} - Memory request (e.g., "4Gi")
+#
+# Service names will be prefixed with "gfm-amo-" automatically
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: gfm-amo-${MODEL_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: gfm-amo-${MODEL_NAME}
+    app.kubernetes.io/component: inference-server
+    app.kubernetes.io/managed-by: automated-deployment
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: gfm-amo-${MODEL_NAME}
+
+---
+# Deployment (used when ENABLE_KSERVE=false)
+# CONDITIONAL: Only deploy if ${ENABLE_KSERVE} == "false"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gfm-amo-${MODEL_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: gfm-amo-${MODEL_NAME}
+    app.kubernetes.io/component: inference-server
+    app.kubernetes.io/managed-by: automated-deployment
+  annotations:
+    deployment.type: "standard"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gfm-amo-${MODEL_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gfm-amo-${MODEL_NAME}
+        app.kubernetes.io/component: inference-server
+        app.kubernetes.io/managed-by: automated-deployment
+    spec:
+      imagePullSecrets:
+        - name: ${IMAGE_PULL_SECRET}
+      serviceAccountName: ${SERVICE_ACCOUNT}
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: nvidia.com/gpu
+                operator: Exists
+      initContainers:
+      - name: setup-directory
+        image: busybox
+        command: ['sh', '-c', 'mkdir -p /data/outputs && chmod 777 /data/outputs']
+        volumeMounts:
+        - name: inference-shared-pvc
+          mountPath: /data
+      containers:
+      - name: inference-server
+        image: "${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        env:
+        - name: MODELS_PATH
+          value: "/models"
+        - name: HF_HOME
+          value: "/models/huggingface_cache"
+        - name: TERRATORCH_SEGMENTATION_IO_PROCESSOR_CONFIG
+          value: "{\"output_path\": \"/data/outputs/\"}"
+        - name: MODEL_NAME
+          value: "${MODEL_NAME}"
+        volumeMounts:
+        - name: models-storage
+          mountPath: /models
+        - name: inference-shared-pvc
+          mountPath: /data
+        resources:
+          limits:
+            cpu: "${CPU_LIMIT}"
+            memory: "${MEMORY_LIMIT}"
+            nvidia.com/gpu: "${GPU_COUNT}"
+          requests:
+            cpu: "${CPU_REQUEST}"
+            memory: "${MEMORY_REQUEST}"
+            nvidia.com/gpu: "${GPU_COUNT}"
+      volumes:
+      - name: models-storage
+        persistentVolumeClaim:
+          claimName: ${MODELS_PVC}
+      - name: inference-shared-pvc
+        persistentVolumeClaim:
+          claimName: ${INFERENCE_SHARED_PVC}
+
+---
+# InferenceService (used when ENABLE_KSERVE=true)
+# CONDITIONAL: Only deploy if ${ENABLE_KSERVE} == "true"
+# Provides KServe integration with scale-to-zero capabilities
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gfm-amo-${MODEL_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: gfm-amo-${MODEL_NAME}
+    app.kubernetes.io/component: inference-server
+    app.kubernetes.io/managed-by: automated-deployment
+  annotations:
+    deployment.type: "kserve"
+spec:
+  predictor:
+    minReplicas: 0
+    maxReplicas: 3
+    scaleTarget: 100
+    scaleMetric: concurrency
+    containerConcurrency: 0
+    timeout: 600
+    containers:
+    - name: kserve-container
+      image: "${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+      imagePullPolicy: Always
+      ports:
+      - name: http
+        containerPort: 8000
+        protocol: TCP
+      env:
+      - name: MODELS_PATH
+        value: "/models"
+      - name: HF_HOME
+        value: "/models/huggingface_cache"
+      - name: TERRATORCH_SEGMENTATION_IO_PROCESSOR_CONFIG
+        value: "{\"output_path\": \"/data/outputs/\"}"
+      - name: MODEL_NAME
+        value: "${MODEL_NAME}"
+      volumeMounts:
+      - name: models-storage
+        mountPath: /models
+      - name: inference-shared-pvc
+        mountPath: /data
+      resources:
+        limits:
+          cpu: "${CPU_LIMIT}"
+          memory: "${MEMORY_LIMIT}"
+          nvidia.com/gpu: "${GPU_COUNT}"
+        requests:
+          cpu: "${CPU_REQUEST}"
+          memory: "${MEMORY_REQUEST}"
+          nvidia.com/gpu: "${GPU_COUNT}"
+    initContainers:
+    - name: setup-directory
+      image: busybox
+      command: ['sh', '-c', 'mkdir -p /data/outputs && chmod 777 /data/outputs']
+      volumeMounts:
+      - name: inference-shared-pvc
+        mountPath: /data
+    volumes:
+    - name: models-storage
+      persistentVolumeClaim:
+        claimName: ${MODELS_PVC}
+    - name: inference-shared-pvc
+      persistentVolumeClaim:
+        claimName: ${INFERENCE_SHARED_PVC}
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+            - key: nvidia.com/gpu
+              operator: Exists
+    imagePullSecrets:
+    - name: ${IMAGE_PULL_SECRET}
