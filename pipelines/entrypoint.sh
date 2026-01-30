@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-if [ "$APP_MODE" = "v" ]; then
-    echo "Starting in Standard TerraTorch mode..."
+if [ "$APP_MODE" = "vllm" ]; then
+    echo "Starting in VLLM mode"
 
     MODEL_NAME=${MODEL_NAME:-"ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11"}
     PLUGIN_NAME=${PLUGIN_NAME:-"terratorch_segmentation"}
-    HF_HOME=${HF_HOME:-"/workspace/models/huggingface_cache"}
+    HF_HOME=${HF_HOME:-"/app/models/huggingface_cache"}
 
     echo "=========================================="
     echo "vLLM Prithvi Flood Detection Server"
@@ -18,8 +18,8 @@ if [ "$APP_MODE" = "v" ]; then
     echo ""
     # 1. Clear Hugging Face lock files
     # This prevents the 'OSError: PermissionError' if a previous pod crashed
-    echo "Checking for stale lock files in /workspace/models..."
-    find /workspace/models -name "*.lock" -delete
+    echo "Checking for stale lock files in /app/models..."
+    find /app/models -name "*.lock" -delete
 
     # 2. Verify GPU availability
     # This logs the GPU status to help debug 'Pending' or 'Runtime' errors
