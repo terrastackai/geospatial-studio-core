@@ -309,6 +309,10 @@ class Settings(BaseSettings):
     AMO_INFERENCE_SHARED_PVC: Optional[str] = Field(
         description="Inference Shared PVC", default="inference-shared-pvc"
     )
+    GENERIC_PROCESSOR_BUCKET: Optional[str] = Field(
+        description="COS bucket for generic processor scripts",
+        default="geodev-generic-processor",
+    )
 
 
 @lru_cache

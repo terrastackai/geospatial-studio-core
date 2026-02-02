@@ -115,7 +115,7 @@ async def invoke_load_model_artifacts(
     }
     create_caikit_config_file = (
         f"echo {json.dumps(create_caikit_config)} "
-        f"| yq -P . > /mnt/data/{model_id_directory_name}config.yml"
+        f"| yq -y . > /mnt/data/{model_id_directory_name}config.yml"
     )
 
     download_commands.append(create_caikit_config_file)

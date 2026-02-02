@@ -103,7 +103,7 @@ spec:
               mountPath: /app/config
             - name: ftuning-script
               mountPath: /ftuning
-          command: ["/bin/sh"]
+          command: ["/bin/bash"]
           args: ["-c", "/ftuning/ftuning.sh"]
           env:
             - name: MLFLOW_TRACKING_INSECURE_TLS
@@ -129,7 +129,7 @@ metadata:
   name: ftuning-script-${TUNE_ID}
 data:
   ftuning.sh: |
-    #!/bin/sh
+    #!/bin/bash
     set -e
 
     # Function to handle errors
@@ -174,7 +174,7 @@ data:
     trap 'error_handler' ERR
 
     echo "Check Terratorch version before starting to tune..."
-    echo $( /opt/miniforge/bin/python -m pip freeze | grep terratorch )
+    echo $( python -m pip freeze | grep terratorch )
     echo
 
     

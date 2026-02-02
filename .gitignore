@@ -195,3 +195,18 @@ output.*
 
 # allow small .tiff files for test fixtures
 !/tests/integration/input_images/**
+
+# From pipelines
+**/*.env
+**/*.tif
+**/*.cwl
+**/*.job.yaml
+**/*.generated
+**/test_geoserver_data
+__pycache__
+**/.DS_Store
+**/test_pgdata
+**/geoserver-rest
+**/*.log
+**/*.ipynb_checkpoints
+**/tasks

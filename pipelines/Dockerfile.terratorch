@@ -1,0 +1,113 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+################################################################################
+# Build Arguments
+################################################################################
+ARG PYTHON_VERSION=3.11
+ARG CUDA_VERSION=11.8
+ARG CUDNN_VERSION=9
+ARG PYTORCH_VERSION=2.7.1
+# ARG BUILDPLATFORM=linux/amd64
+
+################################################################################
+# Stage 1: Base Image with Miniforge
+################################################################################
+FROM pytorch/pytorch:${PYTORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime AS miniforge
+USER root
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+# Install conda packages in a single layer
+RUN mamba install -y -c conda-forge \
+    libspatialindex \
+    gdal \
+    libgdal \
+    libgdal-arrow-parquet \
+    "urllib3<2" \
+    h5netcdf \
+    'cryptography>=43.0.1' \
+    && mamba clean -afy \
+    && rm -rf /opt/miniforge/pkgs/*
+
+# ################################################################################
+# # Stage 2: Runtime Dependencies
+# ################################################################################
+FROM pytorch/pytorch:${PYTORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime AS runtime
+USER root
+# Install only essential system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    vim \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+# Download and install kubectl (single RUN command for efficiency)
+RUN curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+    -o /usr/local/bin/kubectl \
+    "https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl" \
+    && chmod +x /usr/local/bin/kubectl \
+    && mkdir -p ~/.kube \
+    && chmod 700 ~/.kube
+WORKDIR /terratorch
+# Install Python dependencies with cache mount for faster rebuilds
+RUN pip install --upgrade pip && \
+    pip install --timeout=7200 \
+    terratorch==1.1 \
+    'diffusers<=0.34.0' \
+    ipython \
+    nbformat \
+    pg8000 \
+    sqlalchemy \
+    python-dotenv \
+    ibm-cos-sdk \
+    requests \
+    tenacity \
+    pyyaml \
+    opentelemetry-distro \
+    opentelemetry-exporter-otlp
+
+# ################################################################################
+# # Stage 3: Final Production Image
+# ################################################################################
+FROM runtime AS production
+USER root
+# Create non-root user with UID/GID > 10000 for security
+RUN groupadd -g 10001 appgroup && \
+    useradd -r -u 10001 -g appgroup -ms /bin/bash appuser
+# Create necessary directories with proper permissions
+RUN mkdir -p \
+    /.cache \
+    /.local \
+    /.jupyter \
+    /data/output \
+    /opt/app-root/src \
+    && chown -R appuser:appgroup \
+    /terratorch \
+    /.cache \
+    /.local \
+    /.jupyter \
+    /data/output \
+    /opt/app-root/src \
+    && chmod 755 /.cache /.local /.jupyter /data/output \
+    && chmod -R 755 /opt/conda/lib/python3.11/site-packages/terratorch/
+# Setup UTF-8 locale
+ENV LC_ALL=C.UTF-8 \
+    LANG=C.UTF-8 \
+    LC_CTYPE=C.UTF-8
+# Copy application files
+COPY --chown=appuser:appgroup ./components/terratorch_inference/terratorch_inference.py /opt/app-root/src/
+COPY --chown=appuser:appgroup ./components/terratorch_inference/terratorch_inference_utils.py /opt/app-root/src/
+COPY --chown=appuser:appgroup ./general_libraries/gfm_logger /opt/app-root/src/gfm_logger
+COPY --chown=appuser:appgroup ./general_libraries/gfm_data_processing /opt/app-root/src/gfm_data_processing
+COPY --chown=appuser:appgroup ./general_libraries/orchestrate_wrapper/orchestrate_wrapper.py /opt/app-root/src/
+# Switch to non-root user
+USER appuser
+WORKDIR /opt/app-root/src
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import terratorch; print('OK')" || exit 1
+# Default command
+CMD ["python", "/opt/app-root/src/orchestrate_wrapper.py"]
