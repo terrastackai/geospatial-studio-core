@@ -82,15 +82,19 @@ RUN mkdir -p \
     /.cache \
     /.local \
     /.jupyter \
+    /geotunes \
     /data/output \
     /opt/app-root/src \
+    /opt/app-root/src/lightning_logs \
     && chown -R appuser:appgroup \
     /terratorch \
     /.cache \
     /.local \
     /.jupyter \
+    /geotunes \
     /data/output \
     /opt/app-root/src \
+    /opt/app-root/src/lightning_logs \
     && chmod 755 /.cache /.local /.jupyter /data/output \
     && chmod -R 755 /opt/conda/lib/python3.11/site-packages/terratorch/
 # Setup UTF-8 locale
