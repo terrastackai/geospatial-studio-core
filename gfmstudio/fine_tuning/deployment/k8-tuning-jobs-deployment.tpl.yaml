@@ -42,6 +42,7 @@ spec:
     metadata:
       name: ${FTUNE_NAME}-pod
     spec:
+      serviceAccountName: api-gateway-sa
       restartPolicy: Never
       imagePullSecrets:
         - name: ${IMAGE_PULL_SECRET}

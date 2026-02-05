@@ -75,38 +75,47 @@ RUN pip install --upgrade pip && \
 FROM runtime AS production
 USER root
 # Create non-root user with UID/GID > 10000 for security
-RUN groupadd -g 10001 appgroup && \
-    useradd -r -u 10001 -g appgroup -ms /bin/bash appuser
+ENV UID=10001 \
+    USER=appuser
+
+# hadolint ignore=SC2086
+RUN groupadd -g ${UID} -r ${USER} \
+    && useradd -l -u ${UID} -r -g ${USER} ${USER} -ms /bin/bash
+
 # Create necessary directories with proper permissions
 RUN mkdir -p \
     /.cache \
+    /.config/matplotlib \
     /.local \
     /.jupyter \
-    /geotunes \
+    /geotunes/tune-tasks \
     /data/output \
     /opt/app-root/src \
     /opt/app-root/src/lightning_logs \
-    && chown -R appuser:appgroup \
+    && chown -R ${USER}:${USER} \
     /terratorch \
-    /.cache \
+    /.cache/ \
+    /.config/ \
     /.local \
     /.jupyter \
     /geotunes \
     /data/output \
-    /opt/app-root/src \
-    /opt/app-root/src/lightning_logs \
-    && chmod 755 /.cache /.local /.jupyter /data/output \
+    /opt/app-root/src/ \
+    && chmod -R 755 /.config/ /.local /.jupyter /data/output /opt/app-root/src/ \
     && chmod -R 755 /opt/conda/lib/python3.11/site-packages/terratorch/
 # Setup UTF-8 locale
 ENV LC_ALL=C.UTF-8 \
     LANG=C.UTF-8 \
     LC_CTYPE=C.UTF-8
 # Copy application files
-COPY --chown=appuser:appgroup ./components/terratorch_inference/terratorch_inference.py /opt/app-root/src/
-COPY --chown=appuser:appgroup ./components/terratorch_inference/terratorch_inference_utils.py /opt/app-root/src/
-COPY --chown=appuser:appgroup ./general_libraries/gfm_logger /opt/app-root/src/gfm_logger
-COPY --chown=appuser:appgroup ./general_libraries/gfm_data_processing /opt/app-root/src/gfm_data_processing
-COPY --chown=appuser:appgroup ./general_libraries/orchestrate_wrapper/orchestrate_wrapper.py /opt/app-root/src/
+COPY --chown=appuser:appuser ./components/terratorch_inference/terratorch_inference.py /opt/app-root/src/
+COPY --chown=appuser:appuser ./components/terratorch_inference/terratorch_inference_utils.py /opt/app-root/src/
+COPY --chown=appuser:appuser ./general_libraries/gfm_logger /opt/app-root/src/gfm_logger
+COPY --chown=appuser:appuser ./general_libraries/gfm_data_processing /opt/app-root/src/gfm_data_processing
+COPY --chown=appuser:appuser ./general_libraries/orchestrate_wrapper/orchestrate_wrapper.py /opt/app-root/src/
+
+RUN chmod -R 777 /.cache /.config/matplotlib /opt/app-root/src/
+
 # Switch to non-root user
 USER appuser
 WORKDIR /opt/app-root/src
