@@ -485,7 +485,7 @@ async def retrieve_tune(
     item = tunes_crud.get_by_id(db=db, item_id=tune_id, user=user)
     if not item:
         raise HTTPException(status_code=404, detail="Tune not found")
-    if item.status != "Failed":
+    if item.status != "Failed" and item.status != "Finished":
         logs = await collect_pod_logs(tune_id=tune_id)
         if logs:
             # Push log file to COS
@@ -502,13 +502,13 @@ async def retrieve_tune(
     except Exception:
         logger.exception("Tune status was not updated.")
     # create pre-signed url for the logs
-    if item.logs:
+    if item.logs or logs:
         s3 = object_storage.object_storage_client()
 
         try:
             logs_pre_signed_url = grab_tune_file_presigned_url(
                 bucket_name=settings.TUNES_FILES_BUCKET,
-                file_key=item.logs,
+                file_key=item.logs or logs,
                 s3=s3,
                 file_type="logs",
             )

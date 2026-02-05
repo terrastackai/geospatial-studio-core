@@ -182,31 +182,27 @@ async def handle_fine_tuning_webhooks(
 
     full_s3_log_file_path = ""
     # If detail_type is Ftune:Task:JobNotifications, delete resources
+    logs = await collect_pod_logs(tune_id=tune_id)
+
+    if logs:
+        # Push log file to COS
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
+        await upload_logs_cos(logs, full_s3_log_file_path)
+
     if event.detail_type == "Ftune:Task:JobNotifications":
         logger.debug(f"Ftune:Task:JobNotifications: {event.detail}")
         # if status is Failed, push the collected logs to COS
         if event.detail["status"] == "Failed":
             logger.debug(f"{tune_id}: Tuning task failed. Sending pod logs to COS")
-
-            logs = await collect_pod_logs(tune_id=tune_id)
-
-            if logs:
-                # Push log file to COS
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
-                await upload_logs_cos(logs, full_s3_log_file_path)
-
-            await free_k8s_resources(tune_id)
-
         elif event.detail["status"] == "Finished":
-
             logger.debug(f"{tune_id}: Tuning Task finished successfully")
-            await free_k8s_resources(tune_id)
-
         elif event.detail["status"] == "Error":
             logger.debug(
                 f"{tune_id}: Tuning Task Errored and resources already deleted."
             )
+        await free_k8s_resources(tune_id)
+        
 
     try:
         tune_id = str(event.detail["tune_id"])
