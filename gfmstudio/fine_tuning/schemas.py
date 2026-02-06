@@ -402,7 +402,8 @@ class TuneAndInferenceModel(BaseModel):
 
     Examples
     --------
-    >>> tunes_model_response = TuneAndInferenceModel(id='123', name='Tuning Job 1', description='Description of the job')
+    >>> tunes_model_response = TuneAndInferenceModel(
+            id='123', name='Tuning Job 1', description='Description of the job')
     >>> tunes_model_response.status
     ''
     """
@@ -437,7 +438,8 @@ class TunesAndInferenceModels(ListResponse):
 
     Examples
     --------
-    >>> tunes_model_response = TunesAndInferenceModels(results=[TuneAndInferenceModel(id='1', name='Tune and Inference Model Job 1', description='First tuning job')])
+    >>> tunes_model_response = TunesAndInferenceModels(results=[TuneAndInferenceModel(
+            id='1', name='Tune and Inference Model Job 1', description='First tuning job')])
     >>> tunes_model_response.results[0].name
     'Tune and Inference Model Job 1'
     """

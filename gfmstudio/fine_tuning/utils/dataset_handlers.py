@@ -150,7 +150,8 @@ def transform_error_message(error_code: str, error_message: str) -> str:
 
 
 def validate_and_transform_data_sources(data_sources: list) -> str:
-    """verify the data_sources which the user has provided is valid and transform it into the format the pipeline expects
+    """Verify the data_sources which the user has provided is valid and
+    transform it into the format the pipeline expects
 
     Parameters
     ----------

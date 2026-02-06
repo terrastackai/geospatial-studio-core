@@ -93,11 +93,13 @@ async def onboard_inference_model(
             OnboardingStatus.PRESIGNED_URL_FAILED,
         ]
     ):
+        msg = (
+            f"model_id: {item.model_id} already in use."
+            "You can only reuse a model_id for successfully offboarded models and models that fail onboarding."
+        )
         raise HTTPException(
             status_code=422,
-            detail={
-                "message": f"model_id: {item.model_id} already in use. You can only reuse a model_id for successfully offboarded models and models that fail onboarding."
-            },
+            detail={"message": msg},
         )
     else:
         amo_task_manager.set_task_status(
