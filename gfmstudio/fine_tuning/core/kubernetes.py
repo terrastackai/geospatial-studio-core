@@ -591,6 +591,7 @@ async def collect_pod_logs(tune_id: str, retry_label_lookup=True):
             return
     else:
         logger.error(f"No POD found with the specified job name: {kjob_id}")
+        logs = None
         return
 
 
