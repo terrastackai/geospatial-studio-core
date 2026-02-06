@@ -553,6 +553,8 @@ async def collect_pod_logs(tune_id: str, retry_label_lookup=True):
         # get logs
         command_get_logs = ["kubectl", "logs", result_pod[0], "--all-containers=true"]
         result_logs = await run_subprocess_cmds(command=command_get_logs)
+        if result_logs is None:
+            return
 
         # If there are logs
         if result_logs and result_logs[0] != "":
