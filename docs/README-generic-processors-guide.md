@@ -53,7 +53,7 @@ Upload a Python file along with metadata to create a generic processor.
 #### API Endpoint
 
 ```http
-POST {base-api-endpoint}/api/v2/generic-processor
+POST {base-api-endpoint}/v2/generic-processor
 ```
 
 #### Request Format
@@ -318,14 +318,14 @@ Get details and download URL for a specific generic processor.
 #### API Endpoint
 
 ```http
-GET /api/v2/generic-processor/{generic_processor_id}
+GET /v2/generic-processor/{generic_processor_id}
 ```
 
 #### Example
 
 ```bash
-curl -X GET "https://your-api-url/api/v2/generic-processor/b1c40d04-1d36-43ed-b733-5dc18aa45689" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -k -X GET "https://your-api-url/v2/generic-processor/processor-id" \
+  --header "X-API-Key: $STUDIO_API_KEY" 
 ```
 
 #### Response
@@ -357,14 +357,14 @@ Retrieve all generic processors you have access to.
 #### API Endpoint
 
 ```http
-GET /api/v2/generic-processor
+GET /v2/generic-processor
 ```
 
 #### Example
 
 ```bash
-curl -X GET "https://your-api-url/api/v2/generic-processor" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -k -X GET "https://your-api-url/v2/generic-processor" \
+  --header "X-API-Key: $STUDIO_API_KEY" \
 ```
 
 #### Response
@@ -402,7 +402,7 @@ Soft delete a generic processor (marks as inactive).
 #### API Endpoint
 
 ```http
-DELETE /api/v2/generic-processor/{generic_processor_id}
+DELETE /v2/generic-processor/{generic_processor_id}
 ```
 
 #### Example
@@ -441,31 +441,25 @@ Run ML model predictions on geospatial data.
 #### API Endpoint
 
 ```http
-POST /api/v2/inference
+POST /v2/inference
 ```
 
 #### Request Schema
 
 ```json
 {
-  "model_display_name": "string (optional if model_id provided)",
-  "model_id": "uuid (optional if model_display_name provided)",
-  "description": "string (optional)",
-  "location": "string (optional)",
+  "model_display_name": "geofm-sandbox-models",
+  "name": "test_generic",
+  "description": "testing inference with generic processor",
+  "location": "vienna",
   "spatial_domain": {
-    "bbox": [[lon_min, lat_min, lon_max, lat_max]],
-    "polygons": [],
-    "tiles": [],
-    "urls": ["pre-signed-url"] # optional if bbox provided
+        "urls": [
+            "https://geospatial-studio-example-data.s3.us-east.cloud-object-storage.appdomain.cloud/examples-for-inference/austin1_tile_0_1024_train.tiff"
+        ]
   },
-  "temporal_domain": ["YYYY-MM-DD"],
-  "maxcc": 100,
-  "fine_tuning_id": "string (optional)",
-  "generic_processor_id": "uuid (optional)",
-  "post_processing": {
-    "cloud_masking": true,
-    "snow_ice_masking": false
-  }
+  "temporal_domain": ["2026-01-21"],
+  "fine_tuning_id": "your_uploaded_tune_id",
+  "generic_processor_id": "your_created_processor_id",
 }
 ```
 
