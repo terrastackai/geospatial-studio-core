@@ -311,7 +311,7 @@ black gfmstudio/ tests/
 
 ## 🔌🧩 Using Generic Python Processors
 
-See this [ReadMe](docs/generic-processors-guide.md)  for more detailed information. 
+See this [ReadMe](docs/README-generic-processors-guide.md)  for more detailed information. 
 
 ## 🤝 Contributing
 
