@@ -78,10 +78,13 @@ This endpoint uses `multipart/form-data` to accept both the processor metadata a
 #### Example: cURL
 
 ```bash
-curl -X POST "https://your-api-url/api/v2/generic-processor" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F 'generic_processor={"name":"cloud_masking","description":"Custom cloud masking processor","processor_parameters":{"threshold":80}}' \
-  -F "generic_processor_file=@/path/to/your_processor.py"
+
+  curl -k -X POST 'https://your-api-url/v2/generic-processor' \
+  --header 'accept: application/json' \
+  --header "X-API-Key: $STUDIO_API_KEY" \
+  --header 'Content-Type: multipart/form-data' \
+  -F 'generic_processor_file=@@/path/to/your_processor.py;type=text/x-python-script' \
+  -F 'generic_processor_metadata={"name":"cloud_masking","description":"Custom cloud masking processor","processor_parameters":{"threshold":80}}'
 ```
 
 #### Example: Python
@@ -89,49 +92,63 @@ curl -X POST "https://your-api-url/api/v2/generic-processor" \
 ```python
 import requests
 import json
+import os
 
-url = "https://your-api-url/api/v2/generic-processor"
-headers = {"Authorization": "Bearer YOUR_API_KEY"}
+STUDIO_API_KEY = os.getenv("STUDIO_API_KEY", "your-api-key")
+file_path = "/path/to/your/script.py"
+
+
+url = "https://your-api-url/v2/generic-processor"
+headers = { "X-API-Key": STUDIO_API_KEY}
 
 # Processor metadata
 metadata = {
     "name": "cloud_masking",
     "description": "Custom cloud masking processor",
-    "processor_parameters": {
-        "threshold": 80,
-        "method": "scl_based"
-    }
+    "processor_parameters": {"threshold": 80, "method": "scl_based"},
 }
 
 # Prepare the multipart form data
-files = {
-    'generic_processor_file': ('cloud_masking.py', open('cloud_masking.py', 'rb'))
-}
-data = {
-    'generic_processor': json.dumps(metadata)
-}
+files = {"generic_processor_file": ("cloud_masking.py", open(file_path, "rb"))}
+data = {"generic_processor_metadata": json.dumps(metadata)}
 
-response = requests.post(url, headers=headers, files=files, data=data)
-processor = response.json()
-print(f"Processor ID: {processor['id']}")
+try:
+    response = requests.post(
+        url,
+        headers=headers,
+        files=files,
+        data=data,
+        verify=False
+    )
+    processor = response.json()
+    if response.status_code == 201:
+        print("Succesfully created generic processor")
+        print(f"Processor ID: {processor['id']}")   
+    else:
+        print(f"Error: {response.status_code} - {response.text}")
+except requests.exceptions.RequestException as e:
+    print(f"Error: {e}")
+
 ```
 
 #### Response
 
 ```json
 {
-  "id": "b1c40d04-1d36-43ed-b733-5dc18aa45689",
-  "name": "cloud_masking",
-  "description": "Custom cloud masking processor",
-  "processor_parameters": {
-    "threshold": 80,
-    "method": "scl_based"
-  },
-  "processor_file_path": "b1c40d04-1d36-43ed-b733-5dc18aa45689/cloud_masking.py",
-  "status": "FINISHED",
-  "created_at": "2026-01-21T10:30:00Z",
-  "updated_at": "2026-01-21T10:30:00Z",
-  "created_by": "user@example.com"
+    "name": "cloud_masking",
+    "description": "Custom cloud masking processor",
+    "processor_parameters": {
+        "threshold": 80,
+        "method": "scl_based",
+    },
+    "id": "d5811671-fedb-4863-a711-ede1564ccb65",
+    "active": True,
+    "created_by": "test@example.com",
+    "created_at": "2026-02-10T12:29:42.354388Z",
+    "updated_at": "2026-02-10T12:29:42.376796Z",
+    "status": "FINISHED",
+    "processor_file_path": "d5811671-fedb-4863-a711-ede1564ccb65/cloud_masking.py",
+    "processor_presigned_url": None,
 }
 ```
 
