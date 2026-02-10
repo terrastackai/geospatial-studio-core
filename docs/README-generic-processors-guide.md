@@ -83,7 +83,7 @@ This endpoint uses `multipart/form-data` to accept both the processor metadata a
   --header 'accept: application/json' \
   --header "X-API-Key: $STUDIO_API_KEY" \
   --header 'Content-Type: multipart/form-data' \
-  -F 'generic_processor_file=@@/path/to/your_processor.py;type=text/x-python-script' \
+  -F 'generic_processor_file=@/path/to/your_processor.py;type=text/x-python-script' \
   -F 'generic_processor_metadata={"name":"cloud_masking","description":"Custom cloud masking processor","processor_parameters":{"threshold":80}}'
 ```
 
