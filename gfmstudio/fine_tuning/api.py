@@ -485,6 +485,9 @@ async def retrieve_tune(
     item = tunes_crud.get_by_id(db=db, item_id=tune_id, user=user)
     if not item:
         raise HTTPException(status_code=404, detail="Tune not found")
+    updated_dict = item.__dict__
+    full_s3_log_file_path = ""
+    # TODO: Check instead for tune status "In-progress"
     if item.status != "Failed" and item.status != "Finished":
         logs = await collect_pod_logs(tune_id=tune_id)
         if logs:
@@ -492,23 +495,17 @@ async def retrieve_tune(
             current_date = datetime.now().strftime("%Y-%m-%d")
             full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
             await upload_logs_cos(logs, full_s3_log_file_path)
-    try:
-        tunes_crud.update(
-            db=db,
-            item_id=tune_id,
-            item={"logs": full_s3_log_file_path},
-            protected=False,
-        )
-    except Exception:
-        logger.exception("Tune status was not updated.")
+            updated_dict["logs"] = full_s3_log_file_path
+    # TODO: elif tune status is "pending" update updated_dict.logs with 'No logs found. POD not created yet.'
+
     # create pre-signed url for the logs
-    if item.logs or logs:
+    if updated_dict.logs:
         s3 = object_storage.object_storage_client()
 
         try:
             logs_pre_signed_url = grab_tune_file_presigned_url(
                 bucket_name=settings.TUNES_FILES_BUCKET,
-                file_key=item.logs or logs,
+                file_key=updated_dict.logs,
                 s3=s3,
                 file_type="logs",
             )
@@ -526,8 +523,6 @@ async def retrieve_tune(
                     file_type="tuning config",
                 )
 
-            updated_dict = item.__dict__
-
             updated_dict["logs_presigned_url"] = logs_pre_signed_url
             updated_dict["tuning_config_presigned_url"] = tuning_config_presigned_url
 
@@ -537,8 +532,9 @@ async def retrieve_tune(
             logger.exception(
                 f"{tune_id} Error generating presigned url for {item.logs}"
             )
-
-    return item
+    else:
+        updated_dict["logs"] = "No logs found. POD not created yet."
+        return updated_dict
 
 
 @app.patch("/tunes/{tune_id}", tags=["FineTuning / Tunes"])
