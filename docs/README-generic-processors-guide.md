@@ -408,7 +408,7 @@ DELETE /v2/generic-processor/{generic_processor_id}
 #### Example
 
 ```bash
-curl -X DELETE "https://your-api-url/api/v2/generic-processor/b1c40d04-1d36-43ed-b733-5dc18aa45689" \
+curl -X DELETE "https://your-api-url/v2/generic-processor/b1c40d04-1d36-43ed-b733-5dc18aa45689" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -472,7 +472,7 @@ POST /v2/inference
 #### Example: Basic Inference
 
 ```bash
-curl -X POST "https://your-api-url/api/v2/inference" \
+curl -X POST "https://your-api-url/v2/inference" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -492,7 +492,7 @@ curl -X POST "https://your-api-url/api/v2/inference" \
 ```python
 import requests
 
-url = "https://your-api-url/api/v2/inference"
+url = "https://your-api-url/v2/inference"
 headers = {
     "Authorization": "Bearer YOUR_API_KEY",
     "Content-Type": "application/json"
@@ -548,7 +548,7 @@ Integrate a custom Python processor into your inference pipeline by including th
 #### Example
 
 ```bash
-curl -X POST "https://your-api-url/api/v2/inference" \
+curl -X POST "https://your-api-url/v2/inference" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -606,13 +606,13 @@ curl -X POST "https://your-api-url/api/v2/inference" \
 #### Get Inference Details
 
 ```http
-GET /api/v2/inference/{inference_id}
+GET v2/inference/{inference_id}
 ```
 
 **Example:**
 
 ```bash
-curl -X GET "https://your-api-url/api/v2/inference/904d1e13-ddd2-415f-a963-120d16a240f0" \
+curl -X GET "https://your-api-url/v2/inference/904d1e13-ddd2-415f-a963-120d16a240f0" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -642,26 +642,26 @@ curl -X GET "https://your-api-url/api/v2/inference/904d1e13-ddd2-415f-a963-120d1
 #### Get Inference Tasks
 
 ```http
-GET /api/v2/inference/{inference_id}/tasks
+GET v2/inference/{inference_id}/tasks
 ```
 
 **Example:**
 
 ```bash
-curl -X GET "https://your-api-url/api/v2/inference/904d1e13-ddd2-415f-a963-120d16a240f0/tasks" \
+curl -X GET "https://your-api-url/v2/inference/904d1e13-ddd2-415f-a963-120d16a240f0/tasks" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 #### Get Task Output URL
 
 ```http
-GET /api/v2/tasks/{task_id}/output-url
+GET v2/tasks/{task_id}/output-url
 ```
 
 **Example:**
 
 ```bash
-curl -X GET "https://your-api-url/api/v2/tasks/904d1e13-ddd2-415f-a963-120d16a240f0-tile-001/output-url" \
+curl -X GET "https://your-api-url/v2/tasks/904d1e13-ddd2-415f-a963-120d16a240f0-tile-001/output-url" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -677,7 +677,7 @@ import json
 import time
 
 # Configuration
-API_URL = "https://your-api-url/api/v2"
+API_URL = "https://your-api-urlv2"
 API_KEY = "your_api_key_here"
 headers = {
     "Authorization": f"Bearer {API_KEY}",
@@ -834,27 +834,27 @@ else:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v2/generic-processor` | Create processor |
-| GET | `/api/v2/generic-processor/{id}` | Get processor |
-| GET | `/api/v2/generic-processor` | List processors |
-| DELETE | `/api/v2/generic-processor/{id}` | Delete processor |
+| POST | `v2/generic-processor` | Create processor |
+| GET | `v2/generic-processor/{id}` | Get processor |
+| GET | `v2/generic-processor` | List processors |
+| DELETE | `v2/generic-processor/{id}` | Delete processor |
 
 ### Inference Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v2/inference` | Create inference |
-| GET | `/api/v2/inference/{id}` | Get inference |
-| GET | `/api/v2/inference` | List inferences |
-| GET | `/api/v2/inference/{id}/tasks` | Get tasks |
-| DELETE | `/api/v2/inference/{id}` | Delete inference |
+| POST | `v2/inference` | Create inference |
+| GET | `v2/inference/{id}` | Get inference |
+| GET | `v2/inference` | List inferences |
+| GET | `v2/inference/{id}/tasks` | Get tasks |
+| DELETE | `v2/inference/{id}` | Delete inference |
 
 ### Task Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v2/tasks/{task_id}/output-url` | Get output URL |
-| GET | `/api/v2/tasks/{task_id}/logs/{step_id}` | Get logs |
+| GET | `v2/tasks/{task_id}/output-url` | Get output URL |
+| GET | `v2/tasks/{task_id}/logs/{step_id}` | Get logs |
 
 ---
 
