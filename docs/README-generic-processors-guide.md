@@ -434,7 +434,7 @@ Before running inference, ensure you have:
 
 ---
 
-### Creating an Inference Job
+### Creating an Inference Job (Warning: Section needs to be updated with the correct payloads)
 
 Run ML model predictions on geospatial data.
 
