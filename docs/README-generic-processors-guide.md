@@ -434,7 +434,7 @@ Before running inference, ensure you have:
 
 ---
 
-### Creating an Inference Job (Warning: Section needs to be updated with the correct payloads)
+### Creating an Inference Job 
 
 Run ML model predictions on geospatial data.
 
@@ -459,7 +459,12 @@ POST /v2/inference
   },
   "temporal_domain": ["2026-01-21"],
   "fine_tuning_id": "your_uploaded_tune_id",
-  "generic_processor_id": "your_created_processor_id",
+  "post_processing": {
+        "cloud_masking": "False",
+        "ocean_masking": "False",
+        "snow_ice_masking": null,
+        "permanent_water_masking": "False"
+    },
 }
 ```
 
@@ -472,70 +477,115 @@ POST /v2/inference
 #### Example: Basic Inference
 
 ```bash
-curl -X POST "https://your-api-url/v2/inference" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
+curl -k -X 'POST' \
+  'https://your-api-url/v2/inference' \
+  -H 'accept: application/json' \
+  -H "X-API-Key: $STUDIO_API_KEY" \
+  -H 'Content-Type: application/json' \
   -d '{
-    "model_display_name": "flood-detection-model",
-    "description": "Flood detection for Vienna region",
-    "location": "Vienna, Austria",
-    "spatial_domain": {
-      "bbox": [[16.2, 48.1, 16.5, 48.3]]
+  "model_display_name": "geofm-sandbox-models",
+  "name": "test_generic",
+  "description": "testing inference with generic processor",
+  "location": "vienna",
+  "spatial_domain": {
+        "urls": [
+            "https://geospatial-studio-example-data.s3.us-east.cloud-object-storage.appdomain.cloud/examples-for-inference/austin1_tile_0_1024_train.tiff"
+        ]
+  },
+  "temporal_domain": ["2026-01-21"],
+  "fine_tuning_id": "your_uploaded_tune_id",
+  "post_processing": {
+        "cloud_masking": "False",
+        "ocean_masking": "False",
+        "snow_ice_masking": null,
+        "permanent_water_masking": "False"
     },
-    "temporal_domain": ["2024-06-15"],
-    "maxcc": 80
-  }'
+}'
 ```
 
 #### Example: Python
 
 ```python
 import requests
+import json
+import os
+
+STUDIO_API_KEY = os.getenv("STUDIO_API_KEY", "your-api-key")
+
 
 url = "https://your-api-url/v2/inference"
-headers = {
-    "Authorization": "Bearer YOUR_API_KEY",
-    "Content-Type": "application/json"
-}
+headers = { "X-API-Key": STUDIO_API_KEY}
 
 payload = {
-    "model_display_name": "flood-detection-model",
+    "model_display_name": "geofm-sandbox-models",
     "description": "Flood detection for Vienna region",
     "location": "Vienna, Austria",
     "spatial_domain": {
-        "bbox": [[16.2, 48.1, 16.5, 48.3]]
+        "urls": [
+            "https://geospatial-studio-example-data.s3.us-east.cloud-object-storage.appdomain.cloud/examples-for-inference/austin1_tile_0_1024_train.tiff"
+        ]},
     },
     "temporal_domain": ["2024-06-15", "2024-06-16"],
     "maxcc": 80,
     "post_processing": {
-        "cloud_masking": True,
-        "permanent_water_masking": True
-    }
+        "cloud_masking": "False",
+        "ocean_masking": "False",
+        "snow_ice_masking": "False",
+        "permanent_water_masking": "False"
+    },
+    "fine_tuning_id": "your_uploaded_tune_id"
 }
 
-response = requests.post(url, headers=headers, json=payload)
-inference = response.json()
-print(f"Inference ID: {inference['id']}")
-print(f"Status: {inference['status']}")
+try:
+    response = requests.post(url, headers=headers, json=payload, verify=False)
+    inference = response.json()
+
+    if response.status_code == 201:
+        print("Succesfully created inference")
+        print(f"Inference ID: {inference['id']}")
+        print(inference)
+    else:
+        print(f"Error {response.status_code} - {response.text}")
+except requests.exceptions.RequestException as e:
+    print(f"Error: {e}")
+
 ```
 
 #### Response
 
 ```json
 {
-  "id": "904d1e13-ddd2-415f-a963-120d16a240f0",
-  "model_display_name": "flood-detection-model",
-  "model_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "description": "Flood detection for Vienna region",
-  "location": "Vienna, Austria",
-  "spatial_domain": {
-    "bbox": [[16.2, 48.1, 16.5, 48.3]]
-  },
-  "temporal_domain": ["2024-06-15"],
-  "status": "PENDING",
-  "created_at": "2026-01-21T10:30:00Z",
-  "updated_at": "2026-01-21T10:30:00Z",
-  "created_by": "user@example.com"
+    "spatial_domain": {
+        "urls": [
+            "https://geospatial-studio-example-data.s3.us-east.cloud-object-storage.appdomain.cloud/examples-for-inference/austin1_tile_0_1024_train.tiff"
+        ]},
+        "polygons": [],
+        "tiles": [],
+        "urls": []
+    },
+    "temporal_domain": ["2024-06-15","2024-06-16"],
+    "fine_tuning_id": "geotune-gr7oqzxdm6gqk87oswh4xw",
+    "generic_processor": None,
+    "maxcc": 80,
+    "model_display_name": "geofm-sandbox-models",
+    "description": "Flood detection for Vienna region",
+    "location": "Vienna, Austria",
+    "geoserver_layers": None,
+    "demo": None,
+    "model_id": "3d5828b4-8884-40cb-b67c-bb070e73fe39",
+    "inference_output": None,
+    "generic_processor_id": None,
+    "id": "0aa259c4-c33e-459d-88ce-c4e035de5be2",
+    "active": True,
+    "created_by": "test@example.com",
+    "created_at": "2026-02-11T13: 56: 31.782816Z",
+    "updated_at": "2026-02-11T13: 56: 31.789484Z",
+    "status": "PENDING",
+    "tasks_count_total": 1,
+    "tasks_count_success": 0,
+    "tasks_count_failed": 0,
+    "tasks_count_stopped": 0,
+    "tasks_count_waiting": 1
 }
 ```
 
@@ -548,19 +598,31 @@ Integrate a custom Python processor into your inference pipeline by including th
 #### Example
 
 ```bash
-curl -X POST "https://your-api-url/v2/inference" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
+curl -k -X 'POST' \
+  'https://your-api-url/v2/inference' \
+  -H 'accept: application/json' \
+  -H "X-API-Key: $STUDIO_API_KEY" \
+  -H 'Content-Type: application/json' \
   -d '{
-    "model_display_name": "flood-detection-model",
-    "description": "Flood detection with custom cloud masking",
-    "location": "Vienna, Austria",
-    "spatial_domain": {
-      "urls": ["https://example.com/satellite-image.tif"]
+  "model_display_name": "geofm-sandbox-models",
+  "name": "test_generic",
+  "description": "testing inference with generic processor",
+  "location": "vienna",
+  "spatial_domain": {
+        "urls": [
+            "https://geospatial-studio-example-data.s3.us-east.cloud-object-storage.appdomain.cloud/examples-for-inference/austin1_tile_0_1024_train.tiff"
+        ]
+  },
+  "temporal_domain": ["2026-01-21"],
+  "fine_tuning_id": "your_uploaded_tune_id",
+  "post_processing": {
+        "cloud_masking": "False",
+        "ocean_masking": "False",
+        "snow_ice_masking": null,
+        "permanent_water_masking": "False"
     },
-    "temporal_domain": ["2024-06-15"],
-    "generic_processor_id": "b1c40d04-1d36-43ed-b733-5dc18aa45689"
-  }'
+"generic_processor_id": "your_created_generic_id"
+}'
 ```
 
 #### How It Works
@@ -577,23 +639,28 @@ curl -X POST "https://your-api-url/v2/inference" \
   "pipeline_steps": [
     {
       "status": "WAITING",
-      "process_id": "terrakit-data-fetch",
+      "process_id": "url-connector",
       "step_number": 0
     },
     {
       "status": "WAITING",
-      "process_id": "model-inference",
+      "process_id": "terratorch-inference",
       "step_number": 1
     },
     {
       "status": "WAITING",
-      "process_id": "generic-python-processor",
+      "process_id": "postprocess-generic",
       "step_number": 2
     },
     {
       "status": "WAITING",
-      "process_id": "push-to-geoserver",
+      "process_id": "generic-python-processor",
       "step_number": 3
+    },
+    {
+      "status": "WAITING",
+      "process_id": "push-to-geoserver",
+      "step_number": 4
     }
   ]
 }
@@ -612,8 +679,8 @@ GET v2/inference/{inference_id}
 **Example:**
 
 ```bash
-curl -X GET "https://your-api-url/v2/inference/904d1e13-ddd2-415f-a963-120d16a240f0" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -k -X GET "https://your-api-url/v2/inference/904d1e13-ddd2-415f-a963-120d16a240f0" \
+  --header "X-API-Key: $STUDIO_API_KEY" 
 ```
 
 **Response:**
@@ -634,6 +701,7 @@ curl -X GET "https://your-api-url/v2/inference/904d1e13-ddd2-415f-a963-120d16a24
 #### Status Values
 
 - `PENDING`: Job created, waiting to start
+- `READY`: Job ready to be picked by the pipelines
 - `RUNNING`: Currently executing
 - `COMPLETED`: All tasks completed successfully
 - `FAILED`: One or more tasks failed
@@ -642,27 +710,27 @@ curl -X GET "https://your-api-url/v2/inference/904d1e13-ddd2-415f-a963-120d16a24
 #### Get Inference Tasks
 
 ```http
-GET v2/inference/{inference_id}/tasks
+GET /v2/inference/{inference_id}/tasks
 ```
 
 **Example:**
 
 ```bash
 curl -X GET "https://your-api-url/v2/inference/904d1e13-ddd2-415f-a963-120d16a240f0/tasks" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+  --header "X-API-Key: $STUDIO_API_KEY" 
 ```
 
 #### Get Task Output URL
 
 ```http
-GET v2/tasks/{task_id}/output-url
+GET /v2/tasks/{task_id}/output-url
 ```
 
 **Example:**
 
 ```bash
 curl -X GET "https://your-api-url/v2/tasks/904d1e13-ddd2-415f-a963-120d16a240f0-tile-001/output-url" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+  --header "X-API-Key: $STUDIO_API_KEY" 
 ```
 
 ---
@@ -674,73 +742,89 @@ This example demonstrates the complete workflow from creating a generic processo
 ```python
 import requests
 import json
+import os
 import time
 
-# Configuration
-API_URL = "https://your-api-urlv2"
-API_KEY = "your_api_key_here"
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json"
-}
+STUDIO_API_KEY = os.getenv("STUDIO_API_KEY", "your-api-key")
 
 # Step 1: Create a generic processor
-print("Step 1: Creating generic processor...")
-processor_metadata = {
-    "name": "custom_cloud_filter",
-    "description": "Advanced cloud filtering",
-    "processor_parameters": {
-        "threshold": 85,
-        "method": "scl_based"
-    }
+
+file_path = "/path/to/your/script.py"
+
+url = "https://your-api-url/v2/"
+
+headers = { "X-API-Key": STUDIO_API_KEY}
+
+# Processor metadata
+metadata = {
+    "name": "cloud_masking",
+    "description": "Custom cloud masking processor",
+    "processor_parameters": {"threshold": 80, "method": "scl_based"},
 }
 
-files = {
-    'generic_processor_file': ('cloud_filter.py', open('cloud_filter.py', 'rb'))
-}
-data = {
-    'generic_processor': json.dumps(processor_metadata)
-}
+# Prepare the multipart form data
+files = {"generic_processor_file": ("cloud_masking.py", open(file_path, "rb"))}
+data = {"generic_processor_metadata": json.dumps(metadata)}
 
-response = requests.post(
-    f"{API_URL}/generic-processor",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    files=files,
-    data=data
-)
-processor = response.json()
-processor_id = processor['id']
-print(f"✓ Processor created: {processor_id}")
+try:
+    response = requests.post(
+        f"{url}/generic-processor",
+        headers=headers,
+        files=files,
+        data=data,
+        verify=False
+    )
+    processor = response.json()
+    if response.status_code == 201:
+        print("Succesfully created generic processor")
+        print(f"Processor ID: {processor['id']}")   
+    else:
+        print(f"Error: {response.status_code} - {response.text}")
+except requests.exceptions.RequestException as e:
+    print(f"Error: {e}")
 
 # Step 2: Create inference with the generic processor
-print("\nStep 2: Creating inference job...")
-inference_payload = {
-    "model_display_name": "flood-segmentation-v2",
-    "description": "Flood detection with custom cloud filtering",
-    "location": "Danube River, Austria",
-    "spatial_domain": {
-        "bbox": [[16.2, 48.1, 16.5, 48.3]]
+payload = {
+    "model_display_name": "geofm-sandbox-models",
+    "description": "Flood detection for Vienna region",
+    "location": "Vienna, Austria",
+    "spatial_domain": {        
+        "urls": [
+            "https://geospatial-studio-example-data.s3.us-east.cloud-object-storage.appdomain.cloud/examples-for-inference/austin1_tile_0_1024_train.tiff"
+        ]},
+    "temporal_domain": ["2024-06-15", "2024-06-16"],
+    "maxcc": 80,
+        "post_processing": {
+        "cloud_masking": "False",
+        "ocean_masking": "False",
+        "snow_ice_masking": "False",
+        "permanent_water_masking": "False"
     },
-    "temporal_domain": ["2024-06-15"],
-    "maxcc": 90,
-    "generic_processor_id": processor_id
+    "fine_tuning_id": "your_onboarded_tune_id",
+    "generic_processor_id": processor['id']
+
 }
 
-response = requests.post(
-    f"{API_URL}/inference",
-    headers=headers,
-    json=inference_payload
-)
-inference = response.json()
-inference_id = inference['id']
-print(f"✓ Inference created: {inference_id}")
+try:
+    response = requests.post(f"{url}/inference", headers=headers, json=payload, verify=False)
+    inference = response.json()
+
+    if response.status_code == 201:
+        print("Succesfully created inference")
+        inference_id = inference['id']
+        print(f"Inference ID: {inference_id}")
+        print(inference)
+    else:
+        print(f"Error {response.status_code} - {response.text}")
+except requests.exceptions.RequestException as e:
+    print(f"Error: {e}")
 
 # Step 3: Monitor inference progress
-print("\nStep 3: Monitoring inference progress...")
 while True:
     response = requests.get(
-        f"{API_URL}/inference/{inference_id}",
-        headers=headers
+        f"{url}/inference/{inference_id}",
+        headers=headers,
+        verify=False
     )
     inference = response.json()
     status = inference['status']
@@ -759,8 +843,9 @@ if status == 'COMPLETED':
     print("\n✓ Inference completed successfully!")
     
     response = requests.get(
-        f"{API_URL}/inference/{inference_id}/tasks",
-        headers=headers
+        f"{url}/inference/{inference_id}/tasks",
+        headers=headers,
+        verify=False
     )
     tasks = response.json()
     
@@ -768,7 +853,7 @@ if status == 'COMPLETED':
         if task['status'] == 'FINISHED':
             task_id = task['task_id']
             response = requests.get(
-                f"{API_URL}/tasks/{task_id}/output-url",
+                f"{url}/tasks/{task_id}/output-url",
                 headers=headers
             )
             if response.status_code == 200:
@@ -861,7 +946,7 @@ else:
 ## Related Documentation
 
 - [GEOStudio Core README](./README.md)
-- [API Documentation](https://your-api-url/docs)
+- [API Documentation]([https://your-api-url/docs](https://terrastackai.github.io/geospatial-studio-toolkit/api/))
 - [Contributing Guide](./CONTRIBUTING.md)
 
 ---
