@@ -587,7 +587,7 @@ async def collect_pod_logs(tune_id: str, retry_label_lookup=True):
                     logger.info(f"kubectl retry result: {result}")
                     return result if result else (None, job_name)
 
-            logger.error(f"Error getting logs: {result_logs[1].decode('utf-8')}")
+            logger.error(f"Error getting logs: {result_logs[1]}")
             return
     else:
         logger.error(f"No POD found with the specified job name: {kjob_id}")
