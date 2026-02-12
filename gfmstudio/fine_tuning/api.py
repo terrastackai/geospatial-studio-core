@@ -489,17 +489,16 @@ async def retrieve_tune(
     updated_dict = item.__dict__
 
     if item.status == "In_progress":
-        # full_s3_log_file_path = ""
         logs = await collect_pod_logs(tune_id=tune_id)
-        if logs: # None if error fetching logs, pod doesn't exist, or no logs found
+        if logs:
             current_date = datetime.now().strftime("%Y-%m-%d")
             full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
             await upload_logs_cos(logs, full_s3_log_file_path)
             updated_dict["logs"] = full_s3_log_file_path
-    # TODO: elif tune status is "pending" update updated_dict.logs with 'No logs found. POD not created yet.'
+        else:
+            updated_dict["logs"] = "No logs found. POD not created yet."
 
     # create pre-signed url for the logs
-    # if updated_dict["logs"]:
     if updated_dict["status"] in ["In_progress", "Finished", "Failed"]:
         s3 = object_storage.object_storage_client()
 
@@ -533,8 +532,6 @@ async def retrieve_tune(
             logger.exception(
                 f"{tune_id} Error generating presigned url for {item.logs}"
             )
-    if updated_dict["status"] in ["Pending", "Submitted"]:
-        updated_dict["logs"] = "No logs found. POD not created yet."
 
     return updated_dict
 
