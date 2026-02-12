@@ -485,13 +485,13 @@ async def retrieve_tune(
     item = tunes_crud.get_by_id(db=db, item_id=tune_id, user=user)
     if not item:
         raise HTTPException(status_code=404, detail="Tune not found")
+    
     updated_dict = item.__dict__
-    full_s3_log_file_path = ""
-    # TODO: Check instead for tune status "In-progress"
-    if item.status != "Failed" and item.status != "Finished":
+
+    if item.status == "In_progress":
+        # full_s3_log_file_path = ""
         logs = await collect_pod_logs(tune_id=tune_id)
-        if logs:
-            # Push log file to COS
+        if logs: # None if error fetching logs, pod doesn't exist, or no logs found
             current_date = datetime.now().strftime("%Y-%m-%d")
             full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
             await upload_logs_cos(logs, full_s3_log_file_path)
@@ -499,13 +499,14 @@ async def retrieve_tune(
     # TODO: elif tune status is "pending" update updated_dict.logs with 'No logs found. POD not created yet.'
 
     # create pre-signed url for the logs
-    if updated_dict.logs:
+    # if updated_dict["logs"]:
+    if updated_dict["status"] in ["In_progress", "Finished", "Failed"]:
         s3 = object_storage.object_storage_client()
 
         try:
             logs_pre_signed_url = grab_tune_file_presigned_url(
                 bucket_name=settings.TUNES_FILES_BUCKET,
-                file_key=updated_dict.logs,
+                file_key=updated_dict["logs"],
                 s3=s3,
                 file_type="logs",
             )
@@ -532,9 +533,10 @@ async def retrieve_tune(
             logger.exception(
                 f"{tune_id} Error generating presigned url for {item.logs}"
             )
-    else:
+    if updated_dict["status"] in ["Pending", "Submitted"]:
         updated_dict["logs"] = "No logs found. POD not created yet."
-        return updated_dict
+
+    return updated_dict
 
 
 @app.patch("/tunes/{tune_id}", tags=["FineTuning / Tunes"])
@@ -2441,33 +2443,23 @@ async def retrieve_dataset(
         raise HTTPException(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}
         )
+    updated_dict = item.__dict__
     
-    # Also get logs if dataset succeeded? -- Yes. -- to it in the webhook event handlers section.
-    if item.status == "Pending":
+    if updated_dict["status"] == "Pending":
         cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
-        # dataset_crud.update(
-        #     db=db,
-        #     item_id=dataset_id,
-        #     item={
-        #         "logs": cos_log_path,
-        #     },
-        #     protected=False,
-        # )
-        item.logs = cos_log_path
+        if cos_log_path:
+            updated_dict["logs"] = cos_log_path
 
-    if item.logs: #==failed and item.logs:
+    if updated_dict["logs"]:
         s3 = object_storage.object_storage_client()
 
         try:
             logs_pre_signed_url = grab_tune_file_presigned_url(
                 bucket_name=settings.DATASET_FILES_BUCKET,
-                file_key=item.logs,
+                file_key=updated_dict["logs"],
                 s3=s3,
                 file_type="dataset logs",
             )
-
-            updated_dict = item.__dict__
-
             updated_dict["logs_presigned_url"] = logs_pre_signed_url
 
             return updated_dict
@@ -2476,8 +2468,7 @@ async def retrieve_dataset(
             logger.exception(
                 f"{dataset_id} Error generating presigned url for {item.logs}"
             )
-
-    return item
+    return updated_dict
 
 
 @app.delete("/datasets/{dataset_id}", tags=["FineTuning / Datasets"])
