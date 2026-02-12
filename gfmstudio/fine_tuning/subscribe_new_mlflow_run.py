@@ -119,7 +119,7 @@ def listen_to_notifications(
             Thread function to listen for PostgreSQL notifications.
             """
             # Create a separate native connection for the listener thread
-
+            listener_conn = None
             try:
                 listener_conn = pg8000.native.Connection(**listen_params)
                 listener_conn.run("LISTEN new_run_event;")
@@ -127,21 +127,22 @@ def listen_to_notifications(
 
                 while True:
                     # Use select to wait for notifications with timeout
-                    # Get the socket from the connection
                     sock = listener_conn._usock
 
                     if select.select([sock], [], [], 5) == ([], [], []):
                         # Timeout - no notification received
                         continue
 
-                    # Consume the notification by reading from socket
-                    # This will trigger notification processing
-                    listener_conn._flush()
+                    # Read and process any pending data from the socket
+                    # This triggers notification processing in pg8000
+                    try:
+                        listener_conn.run("")  # Empty query to process notifications
+                    except Exception:
+                        pass  # Ignore errors from empty query
 
                     # Check for notifications
-                    notifies = listener_conn.notifications
-                    while notifies:
-                        notify = notifies.pop(0)
+                    while listener_conn.notifications:
+                        notify = listener_conn.notifications.popleft()
                         # notify is a tuple: (backend_pid, channel, payload)
                         notification_queue.put(
                             notify.payload if hasattr(notify, "payload") else notify[2]
@@ -150,10 +151,11 @@ def listen_to_notifications(
             except Exception as e:
                 logger.exception(f"Error in notification listener: {e}")
             finally:
-                try:
-                    listener_conn.close()
-                except Exception:
-                    pass
+                if listener_conn is not None:
+                    try:
+                        listener_conn.close()
+                    except Exception:
+                        pass
 
         def notification_handler(payload):
             """
