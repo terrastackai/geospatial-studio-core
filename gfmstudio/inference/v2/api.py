@@ -895,6 +895,7 @@ async def get_task_step_logs(
     db: Session = Depends(utils.get_db),
     auth=Depends(auth_handler),
     cos_client=Depends(get_cos_client),
+    allow_incomplete: bool = True,  # Allow incomplete logs by default
 ):
     user = auth[0]
     task = task_crud.get_all(db, filters={"task_id": task_id}, user=user)
@@ -909,24 +910,67 @@ async def get_task_step_logs(
             status_code=404, detail={"msg": f"Step {step_id} not found in task"}
         )
 
-    if filtered_step[0].get("status") not in ["FINISHED", "FAILED", "ERROR"]:
-        raise HTTPException(
-            status_code=409,
-            detail={"msg": f"Step {step_id} is not completed. Logs are not available."},
-        )
+    step_status = filtered_step[0].get("status")
+    
+    # Define status categories based on actual enum values
+    completed_statuses = ["FINISHED", "FAILED", "STOPPED"]
+    running_statuses = ["RUNNING", "READY"]
+    
+    is_completed = step_status in completed_statuses
+    is_running = step_status in running_statuses
+    
+    # Block access only if task hasn't started or is in unknown state
+    if not (is_completed or is_running):
+        if not allow_incomplete:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "msg": f"Step {step_id} has status '{step_status}'. Logs may not be available yet.",
+                    "status": step_status
+                },
+            )
 
     inference_id = task_id.split("-task")[0]
     object_key = f"{inference_id}/{task_id}/{task_id}-{step_id}-stdout.log"
+    
     try:
+        # Check if log file exists in COS
+        log_exists = True
+        try:
+            cos_client.head_object(Bucket=pipelines_bucket_name, Key=object_key)
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                log_exists = False
+                if not allow_incomplete:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={
+                            "msg": f"Log file not found for step {step_id}. Task may still be initializing.",
+                            "status": step_status
+                        }
+                    )
+            else:
+                raise
+        
+        # Generate presigned URL even if file doesn't exist yet (for running tasks)
         url = cos_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": pipelines_bucket_name, "Key": object_key},
             ExpiresIn=302400,
         )
+        
+        return {
+            "task_id": task_id,
+            "step_id": step_id,
+            "step_log_url": url,
+            "status": step_status,
+            "is_complete": is_completed,
+            "log_exists": log_exists,
+            "warning": "Logs are incomplete - task is still running" if is_running else None
+        }
+        
     except ClientError as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-    return {"task_id": task_id, "step_id": step_id, "step_log_url": url}
 
 
 # ***************************************************
