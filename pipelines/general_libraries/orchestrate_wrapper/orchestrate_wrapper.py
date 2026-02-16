@@ -113,57 +113,47 @@ def notify_gfmaas_ui(
 def run_and_log(task_id, process_exec, process_id, inference_folder):
     std_out_log_name = f"{inference_folder}/{task_id}/{task_id}-{process_id}-stdout.log"
     std_err_log_name = f"{inference_folder}/{task_id}/{task_id}-{process_id}-stderr.log"
+    
     try:
-        with open(std_out_log_name, "w") as so:
-            with open(std_err_log_name, "w") as se:
-                with contextlib.redirect_stdout(so):
-                    with contextlib.redirect_stderr(se):
-                        ("-----INVOKING TASK-----------------------------------")
-                        logger.debug(
-                            "-----INVOKING TASK-----------------------------------"
-                        )
-                        print("-----INVOKING TASK-----------------------------------")
-                        logger.debug(f"Task ID: {task_id}")
-                        print(f"Task ID: {task_id}")
-                        logger.debug(f"Command: {process_exec}")
-                        print(f"Command: {process_exec}")
-                        try:
-                            result = subprocess.run(
-                                process_exec,
-                                shell=True,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                check=True,
-                                env=os.environ.copy(),
-                            )
-                            output = result.stdout.decode("utf-8")
-                            logger.debug(f"Output: {str(output)}")
-                            print(f"Output: {str(output)}")
-                            logger.debug(f"Return code: {result.returncode}")
-                            print(f"Return code: {result.returncode}")
-                            return result.returncode
-                        except subprocess.CalledProcessError as sub_ex:
-                            logger.error(
-                                f"Task ID: {task_id} Command: {process_exec} exited with error: {sub_ex}"
-                            )
-                            if sub_ex.stdout:
-                                error_stdout = sub_ex.stdout.decode("utf-8")
-                                logger.debug(f"Error stdout: {error_stdout}")
-                                print(f"Error stdout: {error_stdout}")
-                            if sub_ex.stderr:
-                                error_stderr = sub_ex.stderr.decode("utf-8")
-                                logger.debug(f"Error stderr: {error_stderr}")
-                                print(f"Error stderr: {error_stderr}")
-                            return sub_ex.returncode
-                        except Exception as ex:
-                            logger.error(
-                                f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
-                            )
-                            return 500
+        with open(std_out_log_name, "w", buffering=1) as so:  # Line buffering for real-time writes
+            with open(std_err_log_name, "w", buffering=1) as se:
+                so.write("-----INVOKING TASK-----------------------------------\n")
+                so.write(f"Task ID: {task_id}\n")
+                so.write(f"Command: {process_exec}\n")
+                so.flush()
+                
+                logger.debug("-----INVOKING TASK-----------------------------------")
+                logger.debug(f"Task ID: {task_id}")
+                logger.debug(f"Command: {process_exec}")
+                
+                try:
+                    process = subprocess.Popen(
+                        process_exec,
+                        shell=True,
+                        stdout=so,
+                        stderr=se,
+                        env=os.environ.copy(),
+                        bufsize=1,
+                        universal_newlines=True
+                    )
+                    
+                    returncode = process.wait()
+                    
+                    so.write(f"\nReturn code: {returncode}\n")
+                    so.flush()
+                    
+                    logger.debug(f"Return code: {returncode}")
+                    return returncode
+                    
+                except Exception as ex:
+                    error_msg = f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
+                    logger.error(error_msg)
+                    so.write(f"\nError: {error_msg}\n")
+                    so.flush()
+                    return 500
+                    
     except Exception as ex:
-        logger.error(
-            f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
-        )
+        logger.error(f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}")
         return 500
 
 
