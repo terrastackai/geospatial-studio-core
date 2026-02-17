@@ -67,6 +67,12 @@ class InferenceStatus(enum.StrEnum):
     )
 
 
+class GenericProcessorStatus(enum.StrEnum):
+    PENDING = "PENDING"  # Script yet uploaded to COS
+    FINISHED = "FINISHED"  # Script successfully uploaded to COS
+    FAILED = "FAILED"  # Script upload to COS failed
+
+
 INFERENCE_STATE_TRANSITIONS: Dict[InferenceStatus | str, List[InferenceStatus]] = {
     InferenceStatus.PENDING: [
         InferenceStatus.SUBMITTED,

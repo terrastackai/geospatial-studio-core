@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
+import asyncio
 import subprocess
-import time
 from datetime import datetime
 from typing import Union
 
@@ -27,7 +27,7 @@ tune_crud = crud.ItemCrud(model=Tunes)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 
 
-async def free_k8s_resources(tune_id: str):
+async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
     """Function that checks status of job and if in terminal state, deletes the job, pvc, configMap
         Complete : Job run successfully
         Failed: Job failed
@@ -44,10 +44,24 @@ async def free_k8s_resources(tune_id: str):
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
 
     # delete resources
-    while k8s_job_status not in ["Complete", "Failed"]:
-        # update status
-        time.sleep(3)
+    k8s_job_status = str(k8s_job_status).lower()
+    start_time = asyncio.get_event_loop().time()
+    while ("complete" not in k8s_job_status) and ("failed" not in k8s_job_status):
+        elapsed = asyncio.get_event_loop().time() - start_time
+        if elapsed > max_wait_seconds:
+            logger.error(
+                f"{tune_id} Job status check timeout after {max_wait_seconds}s"
+            )
+            break
+
+        await asyncio.sleep(30)
         k8s_job_status, job_id = await kubernetes.check_k8s_job_status(tune_id)
+
+        if k8s_job_status is None:
+            logger.warning(f"{tune_id} Job status is None during poll")
+            break
+
+        k8s_job_status = str(k8s_job_status).lower()
 
     # delete resources; job, pvc, ConfigMap
     try:
@@ -58,7 +72,7 @@ async def free_k8s_resources(tune_id: str):
         logger.exception(f"{tune_id} Error deleting resources.")
 
 
-async def free_k8s_resources_by_label(tune_id: str):
+async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600):
     """Function that checks status of job and if in terminal state, deletes the all resources by label
         Complete : Job run successfully
         Failed: Job failed
@@ -73,11 +87,24 @@ async def free_k8s_resources_by_label(tune_id: str):
     k8s_job_status, _ = await kubernetes.check_k8s_job_status(tune_id)
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
 
-    # delete resources
-    while k8s_job_status not in ["Complete", "Failed"]:
-        # update status
-        time.sleep(3)
+    k8s_job_status = str(k8s_job_status).lower()
+    start_time = asyncio.get_event_loop().time()
+    while ("complete" not in k8s_job_status) and ("failed" not in k8s_job_status):
+        elapsed = asyncio.get_event_loop().time() - start_time
+        if elapsed > max_wait_seconds:
+            logger.error(
+                f"{tune_id} Job status check timeout after {max_wait_seconds}s"
+            )
+            break
+
+        await asyncio.sleep(30)
         k8s_job_status, _ = await kubernetes.check_k8s_job_status(tune_id)
+
+        if k8s_job_status is None:
+            logger.warning(f"{tune_id} Job status is None during poll")
+            break
+
+        k8s_job_status = str(k8s_job_status).lower()
 
     # append kjob to tune-id
     label = f"app=kjob-{tune_id}".lower()

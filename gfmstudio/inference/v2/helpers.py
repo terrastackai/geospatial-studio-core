@@ -4,7 +4,7 @@
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from botocore.client import ClientError
 from fastapi import HTTPException
@@ -17,11 +17,13 @@ from gfmstudio.config import settings
 from gfmstudio.cos_client import get_cos_client
 from gfmstudio.inference.types import EventDetailType, EventStatus, ModelStatus
 from gfmstudio.inference.v2 import schemas
-from gfmstudio.inference.v2.models import Model, Task
+from gfmstudio.inference.v2.models import GenericProcessor, Model, Task
 from gfmstudio.log import logger
 
 model_crud = crud.ItemCrud(model=Model)
 task_crud = crud.ItemCrud(model=Task)
+generic_processor_crud = crud.ItemCrud(model=GenericProcessor)
+
 pipelines_bucket_name = settings.PIPELINES_V2_COS_BUCKET
 EXPERIMENTAL_MODEL_NAMING = "sandbox"
 
@@ -200,6 +202,44 @@ def get_pipeline_steps(inference: schemas.InferenceCreateInput, model_obj) -> li
             }
             for step in pipeline_steps
         ]
+    if inference.generic_processor_id:
+        # Append generic processor step if provided
+        # Add this step before geoserver push step
+        generic_processor_step = {
+            "status": "WAITING",
+            "process_id": "generic-python-processor",
+            "step_number": 0,
+        }
+
+        pipeline_steps = insert_generic_processor_to_pipeline_steps(
+            pipeline_steps=pipeline_steps, generic_processor_step=generic_processor_step
+        )
+
+    return pipeline_steps
+
+
+def insert_generic_processor_to_pipeline_steps(
+    pipeline_steps: list, generic_processor_step: dict
+) -> list:
+    """Insert generic processor step into pipeline steps right before the push_to_geoserver."""
+
+    # Find the index of the item with process_id 'push-to-geoserver'
+    push_to_geoserver_index = next(
+        i
+        for i, step in enumerate(pipeline_steps)
+        if step["process_id"] == "push-to-geoserver"
+    )
+
+    # Adjust the step_number of the new item to match 'push-to-geoserver'
+    generic_processor_step["step_number"] = pipeline_steps[push_to_geoserver_index][
+        "step_number"
+    ]
+
+    # Insert the new item before 'push-to-geoserver'
+    pipeline_steps.insert(push_to_geoserver_index, generic_processor_step)
+
+    # Increment the step_number of 'push-to-geoserver'
+    pipeline_steps[push_to_geoserver_index + 1]["step_number"] += 1
 
     return pipeline_steps
 
@@ -211,9 +251,11 @@ def build_inference_config(
     model_data_spec: List[Dict],
     geoserver_push: Dict,
     pipeline_steps: List[Dict],
+    generic_processor: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the complete inference configuration dictionary."""
-    return {
+
+    results = {
         **inference.model_dump(),
         "data_connector_config": data_connector_config,
         "model_input_data_spec": model_data_spec,
@@ -223,6 +265,11 @@ def build_inference_config(
         "model_access_url": model_obj.model_url,
         "pipeline_steps": pipeline_steps,
     }
+
+    if generic_processor:
+        results["generic_processor"] = generic_processor
+
+    return results
 
 
 def handle_pipeline_integration(
@@ -266,6 +313,7 @@ def build_inference_pipelines_v2_payload(
         pipeline_steps=inference_config.get("pipeline_steps"),
         post_processing=inference_config.get("post_processing"),
         inferencing=inference_config.get("inferencing", {}),
+        generic_processor=inference_config.get("generic_processor", {}),
     )
 
 
@@ -332,3 +380,21 @@ def handle_api_integration(
         detail_type=EventDetailType.TASK_COMPLETE,
         status=EventStatus.COMPLETED,
     )
+
+
+def get_generic_processor(generic_processor_object: GenericProcessor) -> dict:
+    """Retrieve generic processor content.
+
+    Returns
+    -------
+    dict
+        Contents of the generic python processor
+    """
+    return {
+        "name": generic_processor_object["name"],
+        "description": generic_processor_object["description"],
+        "processor_parameters": generic_processor_object["processor_parameters"],
+        "processor_file_path": generic_processor_object["processor_file_path"],
+        "status": generic_processor_object["status"],
+        "processor_presigned_url": generic_processor_object["processor_presigned_url"],
+    }

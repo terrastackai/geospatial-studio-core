@@ -309,6 +309,10 @@ black gfmstudio/ tests/
 
 ---
 
+## 🔌🧩 Using Generic Python Processors
+
+See this [ReadMe](docs/README-generic-processors-guide.md)  for more detailed information. 
+
 ## 🤝 Contributing
 
 We welcome contributions from the community! See the **[CONTRIBUTING](CONTRIBUTING.md)** docs for full guidelines.

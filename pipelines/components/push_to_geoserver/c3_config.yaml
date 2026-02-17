@@ -1,0 +1,15 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+general_libraries:
+  - ../../general_libraries/gfm_logger
+  - ../../general_libraries/gfm_data_processing
+  - ../../general_libraries/orchestrate_wrapper
+main_script:
+  - push_to_geoserver.py
+helper_script:
+  - push_to_geoserver_helper_functions.py
+additional_files:
+  - gfm_logger
+  - gfm_data_processing

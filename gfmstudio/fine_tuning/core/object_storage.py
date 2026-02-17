@@ -54,6 +54,7 @@ def object_storage_client(settings_: Optional[Settings] = None) -> S3Client:
         aws_secret_access_key=settings_.OBJECT_STORAGE_SEC_KEY,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
         region_name=settings_.OBJECT_STORAGE_REGION,
+        verify=(settings.ENVIRONMENT.lower() != "local"),
     )
     return s3
 
@@ -611,14 +612,20 @@ def get_item_download_links(
             "message": "Missing labels/images in the onboarded data store.",
         }
     try:
-        for index in range(0, count):
-            item = all_objects[index]["Key"]
+        success_count = 0
+        for object in all_objects:
+            item = object["Key"]
+            if ".tif" not in item:
+                continue
             download_url = s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": bucket_name, "Key": item},
                 ExpiresIn=3600,
             )
             download_urls.append(download_url)
+            success_count += 1
+            if success_count >= count:
+                break
         return {
             "status_code": list_objects_response["ResponseMetadata"]["HTTPStatusCode"],
             "items": download_urls,

@@ -121,6 +121,14 @@ class GeoServerPush(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class GenericProcessor(BaseModel):
+    name: str
+    description: Optional[str] = None
+    processor_parameters: Optional[Dict[str, Any]] = None
+    processor_file_path: Optional[str] = None
+    status: Optional[str] = None
+
+
 class InferenceConfig(BaseModel):
     spatial_domain: SpatialDomain
     temporal_domain: List[str] = None
@@ -130,6 +138,7 @@ class InferenceConfig(BaseModel):
     pipeline_steps: Optional[List[Dict[str, Any]]] = None
     post_processing: Optional[PostProcessing] = None
     fine_tuning_id: Optional[str] = None
+    generic_processor: Optional[GenericProcessor] = None
     maxcc: Optional[int] = 100
 
 
@@ -178,6 +187,7 @@ class InferenceCreateInput(InferenceConfig):
     model_id: Optional[UUID] = None
     inference_output: Optional[Dict[str, Any]] = None
     model_config = {"extra": "allow"}
+    generic_processor_id: Optional[UUID] = None
 
     @model_validator(mode="after")
     def check_model_required(cls, model):
@@ -378,3 +388,34 @@ class FilesShareOut(BaseModel):
     upload_url: str
     download_url: str
     message: str
+
+
+# ***************************************************
+# Generic Processor component task
+# ***************************************************
+class GenericProcessorCreate(BaseModel):
+    """Generic Processor Create Input Schema."""
+
+    name: str
+    description: Optional[str] = None
+    processor_parameters: Optional[Dict[str, Any]] = None
+
+
+class GenericProcessorGetResponse(ItemResponse, GenericProcessorCreate):
+    """Generic Processor Get Response Schema."""
+
+    status: Optional[str]
+    name: Optional[str] = None
+    description: Optional[str] = None
+    processor_file_path: Optional[str] = None
+    processor_parameters: Optional[Dict[str, Any]] = None
+    processor_presigned_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GenericProcessorListResponse(ListResponse):
+    """Generic Processor List Response Schema."""
+
+    results: Optional[List[GenericProcessorGetResponse]] = []

@@ -52,6 +52,11 @@ data:
   {% if image_modalities|length == 1 %} 
   class_path: GenericNonGeoSegmentationDataModule
   init_args:
+    {% if data["check_stackability"] -%}
+    check_stackability: {{ data["check_stackability"] }}
+    {% else %}
+    check_stackability: false
+    {% endif -%}
     batch_size: 2
     num_workers: 1
     dataset_bands:  # Dataset bands
@@ -231,12 +236,12 @@ model:
     {% else %}
     # ToDo: Remove the tiled_inference if user not provided. 
     tiled_inference_parameters: 
-      h_crop: 512
+      h_crop: 224
       # stride logic = would be h_crop - h_crop * 0.125
-      h_stride: 448
-      w_crop: 512
+      h_stride: 208
+      w_crop: 224
       # stride logic = would be w_crop - w_crop * 0.125
-      w_stride: 448
+      w_stride: 208
       average_patches: true
     {% endif %}
 

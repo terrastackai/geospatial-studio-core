@@ -1,0 +1,338 @@
+{
+    "spatial_domain": {
+        "bbox": [
+            [
+                92.4872138472571,
+                26.194226154319196,
+                92.7450370355971,
+                26.32733412473285
+            ]
+        ],
+        "polygons": [],
+        "tiles": [],
+        "urls": []
+    },
+    "temporal_domain": [
+        "2024-07-25_2024-07-28"
+    ],
+    "model_input_data_spec": [
+        {
+            "bands": [
+                {
+                    "index": 0,
+                    "RGB_band": "R",
+                    "band_name": "B02",
+                    "scaling_factor": 1
+                },
+                {
+                    "index": 1,
+                    "RGB_band": "G",
+                    "band_name": "B03",
+                    "scaling_factor": 1
+                },
+                {
+                    "index": 2,
+                    "RGB_band": "B",
+                    "band_name": "B04",
+                    "scaling_factor": 1
+                },
+                {
+                    "index": 3,
+                    "band_name": "B8A",
+                    "scaling_factor": 1
+                },
+                {
+                    "index": 4,
+                    "band_name": "B11",
+                    "scaling_factor": 1
+                },
+                {
+                    "index": 5,
+                    "band_name": "B12",
+                    "scaling_factor": 1
+                },
+                {
+                    "index": 6,
+                    "band_name": "SCL",
+                    "scaling_factor": 1
+                }
+            ],
+            "connector": "sentinel_aws",
+            "collection": "sentinel-2-l2a",
+            "file_suffix": "S2Hand"
+        }
+    ],
+    "data_connector_config": [
+        {
+            "connector": "sentinel_aws",
+            "collection": "sentinel-2-l2a",
+            "bands": [
+                {
+                    "alt_names": [
+                        "B01"
+                    ],
+                    "band_name": "coastal",
+                    "resolution": "60m",
+                    "description": "Coastal aerosol, 442.7 nm (S2A), 442.3 nm (S2B)"
+                },
+                {
+                    "RGB_band": "B",
+                    "alt_names": [
+                        "B02"
+                    ],
+                    "band_name": "blue",
+                    "resolution": "10m",
+                    "description": "Blue, 492.4 nm (S2A), 492.1 nm (S2B)"
+                },
+                {
+                    "RGB_band": "G",
+                    "alt_names": [
+                        "B03"
+                    ],
+                    "band_name": "green",
+                    "resolution": "10m",
+                    "description": "Green, 559.8 nm (S2A), 559.0 nm (S2B)"
+                },
+                {
+                    "RGB_band": "R",
+                    "alt_names": [
+                        "B04"
+                    ],
+                    "band_name": "red",
+                    "resolution": "10m",
+                    "description": "Red, 664.6 nm (S2A), 665.0 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B05"
+                    ],
+                    "band_name": "rededge1",
+                    "resolution": "20m",
+                    "description": "Vegetation red edge, 704.1 nm (S2A), 703.8 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B06"
+                    ],
+                    "band_name": "rededge2",
+                    "resolution": "20m",
+                    "description": "Vegetation red edge, 740.5 nm (S2A), 739.1 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B07"
+                    ],
+                    "band_name": "rededge3",
+                    "resolution": "20m",
+                    "description": "Vegetation red edge, 782.8 nm (S2A), 779.7 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B08"
+                    ],
+                    "band_name": "nir",
+                    "resolution": "10m",
+                    "description": "NIR, 832.8 nm (S2A), 833.0 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B8A"
+                    ],
+                    "band_name": "nir08",
+                    "resolution": "20m",
+                    "description": "Narrow NIR, 864.7 nm (S2A), 864.0 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B09"
+                    ],
+                    "band_name": "nir09",
+                    "resolution": "60m",
+                    "description": "Water vapour, 945.1 nm (S2A), 943.2 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B11"
+                    ],
+                    "band_name": "swir16",
+                    "resolution": "20m",
+                    "description": "SWIR, 1613.7 nm (S2A), 1610.4 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "B12"
+                    ],
+                    "band_name": "swir22",
+                    "resolution": "20m",
+                    "description": "SWIR, 2202.4 nm (S2A), 2185.7 nm (S2B)"
+                },
+                {
+                    "alt_names": [
+                        "SCL"
+                    ],
+                    "band_name": "scl",
+                    "resolution": "20m",
+                    "description": "Scene classification data, based on Sen2Cor processor, codelist"
+                }
+            ],
+            "scaling_factor": null,
+            "id": "04f16b56-090f-4c04-91dc-a8d1e7d7f87d",
+            "search": {
+                "fields": "{\"include\": [\"id\", \"properties.datetime\", \"properties.eo:cloud_cover\"], \"exclude\": []}",
+                "filter": "eo:cloud_cover < maxcc"
+            },
+            "rgb_bands": [
+                "red",
+                "green",
+                "blue"
+            ],
+            "modality_tag": "S2L2A",
+            "resolution_m": 10,
+            "cloud_masking": {
+                "band": "SCL",
+                "encoding": "sentinel2_scl"
+            },
+            "collection_name": "sentinel-2-l2a",
+            "permanent_water_masking": {
+                "band": "SCL",
+                "encoding": "sentinel2_lulc"
+            }
+        }
+    ],
+    "geoserver_push": [
+        {
+            "workspace": "geofm",
+            "layer_name": "input_rgb",
+            "display_name": "Input image (RGB)",
+            "filepath_key": "model_input_original_image_rgb",
+            "file_suffix": "",
+            "geoserver_style": {
+                "rgb": [
+                    {
+                        "label": "RedChannel",
+                        "channel": 1,
+                        "maxValue": 255,
+                        "minValue": 0
+                    },
+                    {
+                        "label": "GreenChannel",
+                        "channel": 2,
+                        "maxValue": 255,
+                        "minValue": 0
+                    },
+                    {
+                        "label": "BlueChannel",
+                        "channel": 3,
+                        "maxValue": 255,
+                        "minValue": 0
+                    }
+                ]
+            },
+            "z_index": 0,
+            "visible_by_default": "True"
+        },
+        {
+            "workspace": "geofm",
+            "layer_name": "pred",
+            "display_name": "Model prediction",
+            "filepath_key": "model_output_image_masked",
+            "file_suffix": "",
+            "geoserver_style": {
+                "segmentation": [
+                    {
+                        "color": "#808080",
+                        "label": "No flood",
+                        "opacity": 0,
+                        "quantity": "0"
+                    },
+                    {
+                        "color": "#FA4D56",
+                        "label": "Flood",
+                        "opacity": 1,
+                        "quantity": "1"
+                    },
+                    {
+                        "color": "#4589FF",
+                        "label": "Permanent water",
+                        "opacity": 1,
+                        "quantity": 997
+                    },
+                    {
+                        "color": "#FFFAFA",
+                        "label": "Snow/ice",
+                        "opacity": 1,
+                        "quantity": 998
+                    },
+                    {
+                        "color": "#CCCCCC",
+                        "label": "Clouds",
+                        "opacity": 1,
+                        "quantity": 999
+                    }
+                ]
+            },
+            "z_index": 1,
+            "visible_by_default": "True"
+        }
+    ],
+    "pipeline_steps": [
+        {
+            "status": "READY",
+            "process_id": "terrakit-data-fetch",
+            "step_number": 0
+        },
+        {
+            "status": "WAITING",
+            "process_id": "run-inference",
+            "step_number": 1
+        },
+        {
+            "status": "WAITING",
+            "process_id": "postprocess-generic",
+            "step_number": 2
+        },
+        {
+            "status": "WAITING",
+            "process_id": "push-to-geoserver",
+            "step_number": 3
+        }
+    ],
+    "post_processing": {
+        "cloud_masking": "True",
+        "snow_ice_masking": "True",
+        "permanent_water_masking": "True",
+        "ocean_masking": "True"
+    },
+    "fine_tuning_id": null,
+    "maxcc": 100,
+    "model_internal_name": "model_internal_name",
+    "tune_id": "None",
+    "inference_id": "6f031be7",
+    "description": "inference config template",
+    "location": "somewhere",
+    "model_access_url": "https://model_runtime/predict",
+    "user": "me@example.com",
+    "inferencing": {},
+    "pipeline-steps": [
+        {
+            "status": "READY",
+            "process_id": "terrakit-data-fetch",
+            "step_number": 0
+        },
+        {
+            "status": "WAITING",
+            "process_id": "run-inference",
+            "step_number": 1
+        },
+        {
+            "status": "WAITING",
+            "process_id": "postprocess-generic",
+            "step_number": 2
+        },
+        {
+            "status": "WAITING",
+            "process_id": "push-to-geoserver",
+            "step_number": 3
+        }
+    ]
+}

@@ -1,0 +1,10 @@
+[run]
+branch = True
+source =
+    gfmstudio
+
+[report]
+skip_empty = True
+omit =
+    tests/*
+    */__init__.py

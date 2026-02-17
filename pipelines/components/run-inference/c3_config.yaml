@@ -1,0 +1,15 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+general_libraries:
+  - ../../general_libraries/gfm_logger
+  - ../../general_libraries/gfm_data_processing
+  - ../../general_libraries/orchestrate_wrapper
+main_script:
+  - run-inference.py
+helper_script:
+  - inference_helper
+additional_files:
+  - gfm_logger
+  - gfm_data_processing

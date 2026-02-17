@@ -76,8 +76,11 @@ RUN groupadd -g ${UID} -r ${USER} \
     && mkdir -p /home/${USER}/.local \
     && mkdir -p /home/${USER}/.cache \
     && mkdir -p /app/amo \
-    && chown -R ${USER}:${USER} /home/${USER} /app/amo \
-    && chmod -R 777 /app/amo
+    && mkdir -p /geotunes/tune-tasks \
+    && mkdir -p /opt/app-root/src/.config/sentinelhub \
+    && chown -R ${USER}:${USER} /home/${USER} /app/amo /geotunes/ /opt/app-root/src/.config/sentinelhub \
+    && chmod -R 777 /app/amo \
+    && chmod -R 777 /opt/app-root/src/.config/sentinelhub
 
 USER ${USER}
 

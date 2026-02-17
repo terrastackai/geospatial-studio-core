@@ -53,6 +53,11 @@ trainer:
 data:
   class_path: terratorch.datamodules.GenericNonGeoSegmentationDataModule
   init_args:
+    {% if data["check_stackability"] -%}
+    check_stackability: {{ data["check_stackability"] }}
+    {% else %}
+    check_stackability: false
+    {% endif -%}
     batch_size: {{ data["batch_size"] }}
     num_workers: {{ data["workers_per_gpu"] }}
     no_label_replace: {{ label_nodata }}
