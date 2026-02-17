@@ -55,7 +55,7 @@ WORKDIR /terratorch
 # Install Python dependencies with cache mount for faster rebuilds
 RUN pip install --upgrade pip && \
     pip install --timeout=7200 \
-    terratorch==1.1 \
+    terratorch==1.2.2 \
     'diffusers<=0.34.0' \
     ipython \
     nbformat \
