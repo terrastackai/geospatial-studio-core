@@ -935,7 +935,7 @@ async def get_task_step_logs(
     is_running = step_status in running_statuses
     
     if step_status and not (is_completed or is_running):
-        if not allow_incomplete: # TODO: Change default value for allow_incomplete to False
+        if allow_incomplete:
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -953,22 +953,14 @@ async def get_task_step_logs(
     should_read_local = force_refresh or is_running
     
     log_content = ""
-    total_lines = 0
-    lines_returned = 0
-    upload_success = False
-    log_source = "cos"
     
     try:
         if should_read_local:
             if tail_lines:
                 log_lines, total_lines = helpers.read_log_file_tail(local_log_path, tail_lines)
                 log_content = "".join(log_lines)
-                lines_returned = len(log_lines)
-                log_source = "local_tail"
             else:
                 log_content, total_lines = helpers.read_log_file_stream(local_log_path)
-                lines_returned = total_lines
-                log_source = "local_full"
             
             if log_content:
                 upload_success = helpers.upload_logs_to_cos(
@@ -980,14 +972,11 @@ async def get_task_step_logs(
             else:
                 logger.warning(f"No log content found in local file: {local_log_path}")
         
-        log_exists_in_cos = False
         try:
             cos_client.head_object(Bucket=pipelines_bucket_name, Key=object_key)
-            log_exists_in_cos = True
         except ClientError as e:
             if e.response['Error']['Code'] == '404':
-                log_exists_in_cos = False
-                if not allow_incomplete and not log_content:
+                if allow_incomplete and not log_content:
                     raise HTTPException(
                         status_code=404,
                         detail={
@@ -1010,12 +999,6 @@ async def get_task_step_logs(
             "step_id": step_id,
             "step_log_url": url,
             "status": step_status,
-            "is_complete": is_completed,
-            "log_exists_in_cos": log_exists_in_cos,
-            "log_source": log_source,
-            "upload_success": upload_success if log_content else None,
-            "total_lines": total_lines if log_content else None,
-            "lines_returned": lines_returned if tail_lines else None,
             "warning": "Logs are incomplete - task is still running" if is_running else None
         }
         
