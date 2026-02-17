@@ -1,4 +1,12 @@
 {
+  "settingsInheritedFrom": "whitesource-config/whitesource-config@python3.9",
+  "enableRenovate": true,
+  "remediateSettings": {
+    "workflowRules": {
+        "enabled": true
+    }
+  },
+  "extends": ["config:recommended"],
   "scanSettings": {
     "baseBranches": []
   },
@@ -10,13 +18,5 @@
   "issueSettings": {
     "minSeverityLevel": "LOW",
     "issueType": "DEPENDENCY"
-  },
-  "settingsInheritedFrom": "whitesource-config/whitesource-config@python3.9",
-  "enableRenovate": true,
-  "remediateSettings": {
-    "workflowRules": {
-        "enabled": true
-    }
-  },
-  "extends": ["config:recommended"]
+  }
 }
