@@ -26,7 +26,7 @@ def configure_logger(log_level):
         
     if stdout_log:
         stdout_handler = logging.FileHandler(stdout_log, mode='a')
-        stdout_handler.setLevel(logging.INFO)
+        stdout_handler.setLevel(log_level)
         stdout_handler.setFormatter(formatter)
         logger.addHandler(stdout_handler)
     else:
