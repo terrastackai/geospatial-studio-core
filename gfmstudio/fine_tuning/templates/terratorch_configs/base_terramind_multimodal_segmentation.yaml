@@ -101,6 +101,11 @@ data:
   {% else %}
   class_path: terratorch.datamodules.GenericMultiModalDataModule
   init_args:
+    {% if data["check_stackability"] -%}
+    check_stackability: {{ data["check_stackability"] }}
+    {% else %}
+    check_stackability: false
+    {% endif -%}
     # Config for only segmentation. No need to automate this. 
     task: 'segmentation'
     # Out of cuda error for anything > 2
@@ -168,7 +173,7 @@ data:
       {{ norm_stds | to_yaml | indent(6) }}
     train_transform:
       - class_path: albumentations.D4  # Random flip and rotations
-      - class_path: ToTensorV2
+      - class_path: albumentations.pytorch.transforms.ToTensorV2
   {% endif %}
 model:
   class_path: terratorch.tasks.SemanticSegmentationTask
@@ -188,7 +193,10 @@ model:
       backbone_bands: 
         {{ output_bands | to_yaml | indent(8) }}
       necks:
-        {%- if pretrained_model_name == "terramind_v1_base" %}
+        {%- if pretrained_model_name == "terramind_v1_tiny" %}
+        - name: SelectIndices
+          indices: [2, 5, 8, 11]  # tiny version
+        {%- elif pretrained_model_name == "terramind_v1_base" %}
         - name: SelectIndices
           indices: [2, 5, 8, 11]  # base version
         {%- elif pretrained_model_name == "terramind_v1_large" %}
