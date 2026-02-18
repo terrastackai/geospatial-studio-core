@@ -56,6 +56,7 @@ WORKDIR /terratorch
 RUN pip install --upgrade pip && \
     pip install --timeout=7200 \
     terratorch==1.2.2 \
+    mlflow>=1.0.0 \
     'diffusers<=0.34.0' \
     ipython \
     nbformat \
