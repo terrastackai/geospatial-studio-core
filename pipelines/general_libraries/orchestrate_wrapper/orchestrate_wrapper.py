@@ -148,6 +148,7 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
                 
                 try:
                     env = os.environ.copy()
+                    env['PYTHONUNBUFFERED'] = '1'
                     env['GFM_STDOUT_LOG'] = std_out_log_name
                     env['GFM_STDERR_LOG'] = std_err_log_name
                     env['GFM_LOG_LEVEL'] = 'DEBUG'
