@@ -956,11 +956,12 @@ async def get_task_step_logs(
     
     try:
         if should_read_local:
-            if tail_lines:
-                log_lines, total_lines = helpers.read_log_file_tail(local_log_path, tail_lines)
-                log_content = "".join(log_lines)
-            else:
-                log_content, total_lines = helpers.read_log_file_stream(local_log_path)
+            os.sync()
+            # if tail_lines:
+            log_lines, total_lines = helpers.read_log_file_tail(local_log_path, tail_lines)
+            log_content = "".join(log_lines)
+            # else:
+            #     log_content, total_lines = helpers.read_log_file_stream(local_log_path)
             
             if log_content:
                 upload_success = helpers.upload_logs_to_cos(

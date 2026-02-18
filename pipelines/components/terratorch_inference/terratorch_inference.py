@@ -13,8 +13,10 @@ import os
 import shutil
 import json
 import glob
+from tqdm import std
 import yaml
 import time
+import subprocess
 
 
 from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
@@ -44,6 +46,8 @@ process_id = os.getenv("process_id", "terratorch-inference")
 
 metric_manager = MetricManager(component_name=process_id)
 
+stdout_log = os.environ.get('GFM_STDOUT_LOG')
+stderr_log = os.environ.get('GFM_STDERR_LOG')
 
 @metric_manager.count_failures(inference_id=inference_id, task_id=task_id)
 @metric_manager.record_duration(inference_id=inference_id, task_id=task_id)
@@ -190,9 +194,35 @@ def run_terratorch_inference():
 
         ## Now run the command and get a list of the inference output tifs
 
+        terratorch_cli_command = f'python -u -m {terratorch_cli_command}'
         print(terratorch_cli_command)
 
-        os.system(terratorch_cli_command)
+        # TODO: can we get logs for this command written to log files as well?
+        # os.system(terratorch_cli_command)
+        # os.system("sync")
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
+        with open(stdout_log, "a") as log_file:
+            # TODO: use env???
+            process = subprocess.Popen(
+                terratorch_cli_command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=env
+            )
+            for line in iter(process.stdout.readline, ''):
+                log_file.write(line)
+                log_file.flush()
+                os.fsync(log_file.fileno())
+
+            return_code = process.wait()
+            
+            if return_code != 0:
+                raise RuntimeError(f"TerraTorch inference failed with exit code {return_code}")
+
         os.system("sync")
 
         # delete the Tmp dirs for images
