@@ -123,8 +123,8 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
     std_err_log_name = f"{inference_folder}/{task_id}/{task_id}-{process_id}-stderr.log"
     
     try:
-        with open(std_out_log_name, "w", buffering=1) as so:
-            with open(std_err_log_name, "w", buffering=1) as se:
+        with open(std_out_log_name, "a", buffering=1) as so:
+            with open(std_err_log_name, "a", buffering=1) as se:
                 # parent_logger = logging.getLogger(f"orchestrate_wrapper.{task_id}")
                 # parent_logger.setLevel(logging.DEBUG)
                 # parent_logger.handlers.clear()  # Clear any existing handlers
