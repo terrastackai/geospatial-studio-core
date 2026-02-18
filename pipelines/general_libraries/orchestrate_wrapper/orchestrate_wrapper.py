@@ -108,14 +108,10 @@ def notify_gfmaas_ui(
     except Exception as ex:
         logger.error("Failed to send task status. Reason: (%s)", ex)
 
-def stream_to_file(pipe, files, echo=False):
+def stream_to_file(pipe, file, echo=False):
     for line in pipe.stdout:
-        files[0].write(line)
-        files[0].flush()
-
-    for line in pipe.stderr:
-        files[1].write(line)
-        files[1].flush()
+        file.write(line)
+        file.flush()
 
 
 def run_and_log(task_id, process_exec, process_id, inference_folder):
@@ -158,28 +154,23 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
                         shell=True,
                         text=True,
                         stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
                         env=env,
                         bufsize=1,
                         universal_newlines=True
                     )
-                    # t = threading.Thread(target=stream_to_file, args=(process.stderr, se))
-                    # t.start()
 
-                    stream_to_file(pipe=process, files=(so, se))
-                    # t.join()
+                    stream_to_file(pipe=process, file=so)
                     
                     returncode = process.wait()
                     
                     so.write(f"\nReturn code: {returncode}\n")
                     so.flush()
                     
-                    # parent_logger.debug(f"Return code: {returncode}")
                     return returncode
                     
                 except Exception as ex:
                     error_msg = f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
-                    # parent_logger.error(error_msg)
                     so.write(f"\nError: {error_msg}\n")
                     so.flush()
                     return 500
