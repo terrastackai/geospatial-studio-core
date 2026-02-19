@@ -17,7 +17,6 @@ from typing import Any
 from urllib.parse import urljoin
 import requests
 from sqlalchemy import create_engine, text
-# import threading
 
 # Uncomment next 2 lines for local testing
 import dotenv
@@ -120,27 +119,11 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
     
     try:
         with open(std_out_log_name, "a", buffering=1) as so:
-            with open(std_err_log_name, "a", buffering=1) as se:
-                # parent_logger = logging.getLogger(f"orchestrate_wrapper.{task_id}")
-                # parent_logger.setLevel(logging.DEBUG)
-                # parent_logger.handlers.clear()  # Clear any existing handlers
-                
-                # stderr_handler = logging.StreamHandler(stream=se)
-                # stderr_handler.setLevel(logging.DEBUG)
-                # formatter = logging.Formatter(
-                #     "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s - %(message)s"
-                # )
-                # stderr_handler.setFormatter(formatter)
-                # parent_logger.addHandler(stderr_handler)
-                
+            with open(std_err_log_name, "a", buffering=1) as se:                
                 so.write("-----INVOKING TASK-----------------------------------\n")
                 so.write(f"Task ID: {task_id}\n")
                 so.write(f"Command: {process_exec}\n")
                 so.flush()
-                
-                # parent_logger.debug("-----INVOKING TASK-----------------------------------")
-                # parent_logger.debug(f"Task ID: {task_id}")
-                # parent_logger.debug(f"Command: {process_exec}")
                 
                 try:
                     env = os.environ.copy()

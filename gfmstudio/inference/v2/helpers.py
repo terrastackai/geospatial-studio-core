@@ -58,32 +58,6 @@ def read_log_file_tail(file_path: str, lines: Optional[int] = None) -> tuple[Lis
         logger.error(f"Error reading log file {file_path}: {e}")
         return [], 0
 
-
-def read_log_file_stream(file_path: str) -> tuple[str, int]:
-    """
-    Read entire log file content.
-    
-    Args:
-        file_path: Path to the log file
-    
-    Returns:
-        Tuple of (file content as string, total line count)
-    """
-    if not os.path.exists(file_path):
-        logger.warning(f"Log file does not exist: {file_path}")
-        return "", 0
-    
-    try:
-        logger.info(f"Reading log file: {file_path}")
-        with open(file_path, 'r') as f:
-            content = f.read()
-            line_count = content.count('\n')
-            return content, line_count
-    except Exception as e:
-        logger.error(f"Error reading log file {file_path}: {e}")
-        return "", 0
-
-
 def upload_logs_to_cos(
     cos_client,
     bucket_name: str,

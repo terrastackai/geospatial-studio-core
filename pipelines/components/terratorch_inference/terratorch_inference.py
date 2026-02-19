@@ -13,7 +13,6 @@ import os
 import shutil
 import json
 import glob
-from tqdm import std
 import yaml
 import time
 import subprocess
@@ -197,13 +196,9 @@ def run_terratorch_inference():
         terratorch_cli_command = f'python -u -m {terratorch_cli_command}'
         print(terratorch_cli_command)
 
-        # TODO: can we get logs for this command written to log files as well?
-        # os.system(terratorch_cli_command)
-        # os.system("sync")
         env = os.environ.copy()
         env['PYTHONUNBUFFERED'] = '1'
         with open(stdout_log, "a") as log_file:
-            # TODO: use env???
             process = subprocess.Popen(
                 terratorch_cli_command,
                 shell=True,
