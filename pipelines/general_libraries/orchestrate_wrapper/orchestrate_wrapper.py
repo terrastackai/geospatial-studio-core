@@ -4,6 +4,7 @@
 
 import ast
 import contextlib
+import glob
 import json
 import logging
 import os
@@ -13,13 +14,13 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 from urllib.parse import urljoin
-import requests
-from sqlalchemy import create_engine, text
 
 # Uncomment next 2 lines for local testing
 import dotenv
+import requests
+from sqlalchemy import create_engine, text
+
 dotenv.load_dotenv()
 
 process_id = os.getenv("process_id", "sentinelhub_connector")
@@ -284,7 +285,7 @@ def update_status_after_run(engine, process_id, inference_id, task_id, new_state
 
 def get_generic_processor_values(inference_folder: str, task_id: str):
     logger.info(
-        f">>>>>> Detected generic-python-processor, about to read script from inference_config file"
+        ">>>>>> Detected generic-python-processor, about to read script from inference_config file"
     )
     # read the script from the inference_config.yaml file
     inference_config_path = f"{inference_folder}/{inference_id}_config.json"
@@ -537,7 +538,19 @@ while True:
             # )
             # Add logic when file has no main function
 
+            # Always expect the uploaded generic python scripts to accept the --input and --output folders.
+            output_folder = f"{inference_folder}/{task_id}"
+            input_folder = (
+                pred_files[0]
+                if (pred_files := glob.glob(f"{output_folder}/*_pred.tif"))
+                else output_folder
+            )
+            processor_parameters.update(
+                {"input": input_folder, "output": output_folder}
+            )
+
             process_exec = f"opentelemetry-instrument python {processor_file_path}"
+
             if processor_parameters:
                 for param_key, param_value in processor_parameters.items():
                     process_exec += f" --{param_key} {param_value}"
