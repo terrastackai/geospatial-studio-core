@@ -2497,7 +2497,7 @@ async def delete_dataset(
     else:
         dataset_to_delete = dataset_crud.get_by_id(db=db, item_id=dataset_id, user=user)
         if dataset_to_delete:
-            dataset_crud.delete(db=db, item_id=dataset_id, user=user)
+            dataset_crud.soft_delete(db=db, item_id=dataset_id, user=user)
         return JSONResponse(
             content={
                 "message": "All objects in the dataset have been successfully deleted",
