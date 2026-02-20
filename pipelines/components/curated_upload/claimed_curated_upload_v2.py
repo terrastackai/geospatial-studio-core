@@ -147,17 +147,21 @@ def notify_df_api(onboarding_details: dict = None):
     """
     logger.info("Notify the dataset-factory API onboarding status")
     event_data = {
+        "event_id": str(uuid.uuid4()),
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "detail": onboarding_details,
+        "detail_type": "FT:Data:Onboarding",
+        "source": "com.ibm.dataset-factory-onboarding",
     }
-    if "notifications" in df_webhooks_url:
+
+    if "notifications" in df_webhooks_url and onboarding_details["status"] in ["Succeeded", "Failed"]:
         event_data.update(
             {
-                "event_id": str(uuid.uuid4()),
                 "detail_type": "FT:Data:Finished",
                 "source": "com.ibm.dataset-factory-onboarding",
             }
         )
+
 
     try:
         response = requests.post(
@@ -880,6 +884,12 @@ def main():
 
 if __name__ == "__main__":
     try:
+        start_onboarding_details = {}
+        start_onboarding_details["dataset_id"] = dataset_id
+        start_onboarding_details["status"] = "Onboarding"
+        start_onboarding_details["error_code"] = default_error["code"]
+        start_onboarding_details["error_message"] = default_error["message"]
+        notify_df_api(start_onboarding_details)
         main()
     except Exception as e:
         logger.error(
