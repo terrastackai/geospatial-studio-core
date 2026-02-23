@@ -264,27 +264,11 @@ async def handle_dataset_factory_webhooks(
             status_code=404,
             detail={"message": f"Missing Dataset-{dataset_id} not updated."},
         )
+    cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
+    logger.debug(f"COS_LOGS_PATH=={cos_log_path}")
 
-    if event.detail["status"] == "Onboarding":
-        try:
-            dataset_crud.update(
-                db=session,
-                item_id=dataset_id,
-                item={"status": event.detail["status"]},
-                protected=False,
-            )
-        except Exception:
-            logger.exception("Dataset status was not updated.")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "message": f"Internal server error occurred. Dataset-{dataset_id} not updated."
-                },
-            )
-    else:
-        cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
-        logger.info(f"COS_LOGS_PATH=={cos_log_path}")
-        dataset_crud.update(db=session, item_id=dataset_id, item={"logs": cos_log_path}, protected=False)
+    # Job cleanup; when status is Succeeded or Failed
+    if event.detail["status"] != "Onboarding":
         k8s_delete_job_command = f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
         k8s_delete_secret_command = (
             f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
@@ -318,68 +302,59 @@ async def handle_dataset_factory_webhooks(
             error_message = str(exc.output)
             logger.error("Unable to remove deployment file, Error - " + error_message)
 
-        logger.info(f"Retrieved dataset for webhook update: {dataset.id}")
-        user = dataset.created_by or user
-        try:
-            if event.detail["status"] == "Failed":
-                dataset_crud.update(
-                    db=session,
-                    item_id=dataset_id,
-                    item={
-                        "status": event.detail["status"],
-                        "error": transform_error_message(
-                            event.detail["error_code"], event.detail["error_message"]
-                        ),
-                        "logs": cos_log_path,
-                    },
-                    protected=False,
-                )
-            else:
-                updated_training_params = dataset.training_params or {}
+    logger.info(f"Retrieved dataset for webhook update: {dataset.id}")
+    user = dataset.created_by or user
+    item = {
+        "status": event.detail["status"],
+        "error": transform_error_message(
+            event.detail["error_code"], event.detail["error_message"]
+        ),
+        "logs": cos_log_path
+    }
+    try:
+        if event.detail["status"] == "Succeeded":
+            updated_training_params = dataset.training_params or {}
 
-                # The label suffix should be prefixed with * for fine-tuning
-                label_suffix = dataset.label_suffix
-                label_suffix = label_suffix if "*" in label_suffix else f"*{label_suffix}"
+            # The label suffix should be prefixed with * for fine-tuning
+            label_suffix = dataset.label_suffix
+            label_suffix = label_suffix if "*" in label_suffix else f"*{label_suffix}"
 
-                # Populate Training Params
-                training_params = event.detail["training_params"]
+            # Populate Training Params
+            training_params = event.detail["training_params"]
 
-                # Update the params that came from the user.
-                updated_training_params.update(training_params)
+            # Update the params that came from the user.
+            updated_training_params.update(training_params)
 
-                # Add classes from label-categories
-                if categories := dataset.label_categories:
-                    classes = [i["id"] for i in categories if i.get("id")]
-                    if classes:
-                        updated_training_params["classes"] = classes
+            # Add classes from label-categories
+            if categories := dataset.label_categories:
+                classes = [i["id"] for i in categories if i.get("id")]
+                if classes:
+                    updated_training_params["classes"] = classes
 
-                    class_weights = [i["weight"] for i in categories if i.get("weight")]
-                    if class_weights:
-                        updated_training_params["class_weights"] = class_weights
+                class_weights = [i["weight"] for i in categories if i.get("weight")]
+                if class_weights:
+                    updated_training_params["class_weights"] = class_weights
 
-                dataset_crud.update(
-                    db=session,
-                    item_id=dataset_id,
-                    item={
-                        "status": event.detail["status"],
-                        "size": event.detail["size"],
-                        "error": transform_error_message(
-                            event.detail["error_code"], event.detail["error_message"]
-                        ),
-                        "training_params": updated_training_params,
-                        #TODO: debug why this is not working for successful uonboarding.
-                        "logs": cos_log_path,
-                    },
-                    protected=False,
-                )
-        except Exception:
-            logger.exception("Dataset status was not updated.")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "message": f"Internal server error occurred. Dataset-{dataset_id} not updated."
-                },
-            )
+            item.update({
+                "size": event.detail["size"],
+                "training_params": updated_training_params,
+            })
+
+        # Update dataset status can be Onboarding, Succeeded or Failed
+        dataset_crud.update(
+            db=session,
+            item_id=dataset_id,
+            item=item,
+            protected=False,
+        )
+    except Exception:
+        logger.exception("Dataset status was not updated.")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Internal server error occurred. Dataset-{dataset_id} not updated."
+            },
+        )
 
     logger.info(f"Dataset status and details has been updated for {dataset_id}")
     return dataset_id
