@@ -18,7 +18,7 @@ from gfmstudio.log import logger
 
 def list_zipped_files(url, just_tif=True):
     """list zipped files from an url without downloading the .zip"""
-    with RemoteZip(url) as zip:
+    with RemoteZip(url, verify=False) as zip:
         il = zip.infolist()
     if just_tif is True:
         return [
