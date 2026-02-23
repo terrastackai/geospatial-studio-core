@@ -495,11 +495,9 @@ async def retrieve_tune(
             full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
             await upload_logs_cos(logs, full_s3_log_file_path)
             updated_dict["logs"] = full_s3_log_file_path
-        else:
-            updated_dict["logs"] = "No logs found. POD not created yet."
 
     # create pre-signed url for the logs
-    if updated_dict["status"] in ["In_progress", "Finished", "Failed"]:
+    if updated_dict["logs"]:
         s3 = object_storage.object_storage_client()
 
         try:
