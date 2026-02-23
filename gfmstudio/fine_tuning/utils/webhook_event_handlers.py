@@ -265,8 +265,7 @@ async def handle_dataset_factory_webhooks(
             detail={"message": f"Missing Dataset-{dataset_id} not updated."},
         )
     cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
-    logger.info(f"COS_LOGS_PATH=={cos_log_path}")
-    dataset_crud.update(db=session, item_id=dataset_id, item={"logs": cos_log_path}, protected=False)
+    logger.debug(f"COS_LOGS_PATH=={cos_log_path}")
     k8s_delete_job_command = f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
     k8s_delete_secret_command = (
         f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
@@ -302,21 +301,15 @@ async def handle_dataset_factory_webhooks(
 
     logger.info(f"Retrieved dataset for webhook update: {dataset.id}")
     user = dataset.created_by or user
+    item = {
+        "status": event.detail["status"],
+        "error": transform_error_message(
+            event.detail["error_code"], event.detail["error_message"]
+        ),
+        "logs": cos_log_path
+    }
     try:
-        if event.detail["status"] == "Failed":
-            dataset_crud.update(
-                db=session,
-                item_id=dataset_id,
-                item={
-                    "status": event.detail["status"],
-                    "error": transform_error_message(
-                        event.detail["error_code"], event.detail["error_message"]
-                    ),
-                    "logs": cos_log_path,
-                },
-                protected=False,
-            )
-        else:
+        if event.detail["status"] == "Succeeded":
             updated_training_params = dataset.training_params or {}
 
             # The label suffix should be prefixed with * for fine-tuning
@@ -339,21 +332,16 @@ async def handle_dataset_factory_webhooks(
                 if class_weights:
                     updated_training_params["class_weights"] = class_weights
 
-            dataset_crud.update(
-                db=session,
-                item_id=dataset_id,
-                item={
-                    "status": event.detail["status"],
-                    "size": event.detail["size"],
-                    "error": transform_error_message(
-                        event.detail["error_code"], event.detail["error_message"]
-                    ),
-                    "training_params": updated_training_params,
-                    #TODO: debug why this is not working for successful uonboarding.
-                    "logs": cos_log_path,
-                },
-                protected=False,
-            )
+            item.update({
+                "size": event.detail["size"],
+                "training_params": updated_training_params,
+            })
+        dataset_crud.update(
+            db=session,
+            item_id=dataset_id,
+            item=item,
+            protected=False,
+        )
     except Exception:
         logger.exception("Dataset status was not updated.")
         raise HTTPException(
