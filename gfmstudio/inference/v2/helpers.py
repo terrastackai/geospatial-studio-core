@@ -58,39 +58,6 @@ def read_log_file_tail(file_path: str, lines: Optional[int] = None) -> tuple[Lis
         logger.error(f"Error reading log file {file_path}: {e}")
         return [], 0
 
-def upload_logs_to_cos(
-    cos_client,
-    bucket_name: str,
-    object_key: str,
-    log_content: str
-) -> bool:
-    """
-    Upload log content to Cloud Object Storage.
-    
-    Args:
-        cos_client: COS client instance
-        bucket_name: Target bucket name
-        object_key: Object key/path in COS
-        log_content: Log content to upload
-    
-    Returns:
-        True if upload successful, False otherwise
-    """
-    try:
-        cos_client.put_object(
-            Bucket=bucket_name,
-            Key=object_key,
-            Body=log_content.encode('utf-8'),
-            ContentType='text/plain'
-        )
-        logger.info(f"Successfully uploaded logs to COS: {object_key}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to upload logs to COS {object_key}: {e}")
-        return False
-
-
-
 def is_model_inference_ready(model_obj: Model) -> bool:
     """
     Determine if the given model is ready for inference.

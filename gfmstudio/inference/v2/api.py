@@ -959,18 +959,7 @@ async def get_task_step_logs(
             os.sync()
 
             log_lines, total_lines = helpers.read_log_file_tail(local_log_path, tail_lines)
-            log_content = "".join(log_lines)
-            
-            if log_content:
-                upload_success = helpers.upload_logs_to_cos(
-                    cos_client,
-                    pipelines_bucket_name,
-                    object_key,
-                    log_content
-                )
-            else:
-                logger.warning(f"No log content found in local file: {local_log_path}")
-        
+            log_content = "".join(log_lines)        
         try:
             cos_client.head_object(Bucket=pipelines_bucket_name, Key=object_key)
         except ClientError as e:
