@@ -69,7 +69,7 @@ def obtain_band_descriptions_from(dataset_url: str, sample_data: str):
     bands: list
         a list band indices and descriptions
     """
-    with RemoteZip(dataset_url) as zip:
+    with RemoteZip(dataset_url, verify=False) as zip:
         sample_image = zip.read(sample_data)
 
     with rasterio.MemoryFile(sample_image) as memfile:
