@@ -2440,7 +2440,7 @@ async def retrieve_dataset(
         )
     updated_dict = item.__dict__
     
-    if updated_dict["status"] == "Pending":
+    if updated_dict["status"] == "Onboarding":
         cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
         if cos_log_path:
             updated_dict["logs"] = cos_log_path

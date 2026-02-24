@@ -266,38 +266,6 @@ async def handle_dataset_factory_webhooks(
         )
     cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
     logger.debug(f"COS_LOGS_PATH=={cos_log_path}")
-    k8s_delete_job_command = f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
-    k8s_delete_secret_command = (
-        f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
-    )
-    remove_job_deployment_file_command = (
-        f"rm {BASE_DIR}/deployment/jobs/onboarding-v2-pipeline-{dataset_id}.yaml"
-    )
-
-    try:
-        delete_job_output = subprocess.check_output(k8s_delete_job_command, shell=True)
-        logger.info(delete_job_output)
-    except subprocess.CalledProcessError as exc:
-        error_message = str(exc.output)
-        logger.error("Unable to remove the job.  Error - " + error_message)
-
-    try:
-        delete_secret_output = subprocess.check_output(
-            k8s_delete_secret_command, shell=True
-        )
-        logger.info(delete_secret_output)
-    except subprocess.CalledProcessError as exc:
-        error_message = str(exc.output)
-        logger.error("Unable to remove secrets from the job. Error - " + error_message)
-
-    try:
-        delete_deployment_file_output = subprocess.check_output(
-            remove_job_deployment_file_command, shell=True
-        )
-        logger.info(delete_deployment_file_output)
-    except subprocess.CalledProcessError as exc:
-        error_message = str(exc.output)
-        logger.error("Unable to remove deployment file, Error - " + error_message)
 
     logger.info(f"Retrieved dataset for webhook update: {dataset.id}")
     user = dataset.created_by or user
@@ -336,12 +304,49 @@ async def handle_dataset_factory_webhooks(
                 "size": event.detail["size"],
                 "training_params": updated_training_params,
             })
+        # Update dataset; status can be Onboarding, Succeeded or Failed
         dataset_crud.update(
             db=session,
             item_id=dataset_id,
             item=item,
             protected=False,
         )
+
+        # Job cleanup; when status is Succeeded or Failed
+        if event.detail["status"] != "Onboarding":
+            k8s_delete_job_command = f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
+            k8s_delete_secret_command = (
+                f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
+            )
+            remove_job_deployment_file_command = (
+                f"rm {BASE_DIR}/deployment/jobs/onboarding-v2-pipeline-{dataset_id}.yaml"
+            )
+
+            try:
+                delete_job_output = subprocess.check_output(k8s_delete_job_command, shell=True)
+                logger.info(delete_job_output)
+            except subprocess.CalledProcessError as exc:
+                error_message = str(exc.output)
+                logger.error("Unable to remove the job.  Error - " + error_message)
+
+            try:
+                delete_secret_output = subprocess.check_output(
+                    k8s_delete_secret_command, shell=True
+                )
+                logger.info(delete_secret_output)
+            except subprocess.CalledProcessError as exc:
+                error_message = str(exc.output)
+                logger.error("Unable to remove secrets from the job. Error - " + error_message)
+
+            try:
+                delete_deployment_file_output = subprocess.check_output(
+                    remove_job_deployment_file_command, shell=True
+                )
+                logger.info(delete_deployment_file_output)
+            except subprocess.CalledProcessError as exc:
+                error_message = str(exc.output)
+                logger.error("Unable to remove deployment file, Error - " + error_message)
+
     except Exception:
         logger.exception("Dataset status was not updated.")
         raise HTTPException(
