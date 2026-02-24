@@ -306,7 +306,32 @@ def download_dataset(source_url: str, destination: str):
     try:
         if not os.path.exists(destination):
             os.makedirs(destination)
-        filename = wget.download(source_url, out=destination)  # might not be a zip here
+        # Download with SSL verification disabled
+        response = requests.get(source_url, verify=False, stream=True, timeout=300)
+        response.raise_for_status()
+
+        # Extract filename from URL or Content-Disposition header
+        filename = source_url.split('/')[-1]
+        if 'Content-Disposition' in response.headers:
+            content_disposition = response.headers['Content-Disposition']
+            if 'filename=' in content_disposition:
+                filename = content_disposition.split('filename=')[-1].strip('"')
+
+        filepath = os.path.join(destination, filename)
+
+        # Download file with progress
+        total_size = int(response.headers.get('content-length', 0))
+        with open(filepath, 'wb') as f:
+            if total_size == 0:
+                f.write(response.content)
+            else:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+
+        filename = filepath
         if zipfile.is_zipfile(filename):
             with zipfile.ZipFile(filename, "r") as zip_ref:
                 zip_ref.extractall(destination)
