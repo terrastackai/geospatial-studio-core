@@ -69,6 +69,7 @@ import numpy as np
 import rasterio
 import requests
 import wget
+import ssl
 from botocore.client import Config
 from rio_cogeo.cogeo import cog_validate
 from sklearn.model_selection import train_test_split
@@ -310,6 +311,7 @@ def download_dataset(source_url: str, destination: str):
     try:
         if not os.path.exists(destination):
             os.makedirs(destination)
+        ssl._create_default_https_context = ssl._create_unverified_context
         filename = wget.download(source_url, out=destination)  # might not be a zip here
         if zipfile.is_zipfile(filename):
             with zipfile.ZipFile(filename, "r") as zip_ref:
