@@ -28,6 +28,38 @@ pipelines_bucket_name = settings.PIPELINES_V2_COS_BUCKET
 EXPERIMENTAL_MODEL_NAMING = "sandbox"
 
 
+def read_log_file_tail(
+    file_path: str, lines: Optional[int] = None
+) -> tuple[List[str], int]:
+    """
+    Read log file and return last N lines.
+
+    Args:
+        file_path: Path to the log file
+        lines: Number of lines to return from end (None = all lines)
+
+    Returns:
+        Tuple of (list of lines, total line count)
+    """
+    if not os.path.exists(file_path):
+        logger.warning(f"Log file does not exist: {file_path}")
+        return [], 0
+
+    try:
+        logger.info(f"Reading log file: {file_path}")
+        with open(file_path, "r") as f:
+            all_lines = f.readlines()
+            total_lines = len(all_lines)
+
+            if lines and total_lines > lines:
+                return all_lines[-lines:], total_lines
+            else:
+                return all_lines, total_lines
+    except Exception as e:
+        logger.error(f"Error reading log file {file_path}: {e}")
+        return [], 0
+
+
 def is_model_inference_ready(model_obj: Model) -> bool:
     """
     Determine if the given model is ready for inference.

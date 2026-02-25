@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
+import glob
 import json
-import time
-import os, glob
+import os
 import shutil
+import time
 
 from gfm_data_processing.common import logger
 
@@ -29,7 +30,8 @@ def read_json_with_retries(filepath, max_retries=5, base_delay=0.5):
                 raise
             time.sleep(base_delay * (2 ** (attempt - 1)))
 
-def make_tmp_dir(path: str, tmp_dir:str):
+
+def make_tmp_dir(path: str, tmp_dir: str):
     """Make tmp directory
 
     Parameters
@@ -49,7 +51,8 @@ def make_tmp_dir(path: str, tmp_dir:str):
 
     return new_path
 
-def copy_tiffs(search_key: str, old_path:str, new_path:str):
+
+def copy_tiffs(search_key: str, old_path: str, new_path: str):
     """Function to copy tiffs to a tmp folder
 
     Parameters
@@ -62,14 +65,17 @@ def copy_tiffs(search_key: str, old_path:str, new_path:str):
         New path to copy the tiff
     """
     for filename in os.listdir(old_path):
-        if search_key in filename.lower() and filename.lower().endswith(("tif","tiff")):
+        if search_key in filename.lower() and filename.lower().endswith(
+            ("tif", "tiff")
+        ):
             # Build full paths for the tiffs
             old_path = os.path.join(old_path, filename)
             new_path = os.path.join(new_path, filename)
             logger.info(f"Copying Image from {old_path} to {new_path}")
             shutil.copy2(src=old_path, dst=new_path)
 
-def delete_tmp_dir(path:str):
+
+def delete_tmp_dir(path: str):
     """Function to delete tmp dir if it exists
 
     Parameters
@@ -80,6 +86,7 @@ def delete_tmp_dir(path:str):
     if os.path.exists(path):
         ## Delete the tmp folder after inference
         shutil.rmtree(path)
+
 
 def upload_prediction_tiff(output_folder, task_folder):
     s3_client = s3()
@@ -96,7 +103,9 @@ def upload_prediction_tiff(output_folder, task_folder):
         Cos file path updated with /data/ removed : {cos_file_path_updated} "
     )
 
-    s3_client.upload_file(Filename=predicted_file_path, Bucket=bucket, Key=cos_file_path_updated)
+    s3_client.upload_file(
+        Filename=predicted_file_path, Bucket=bucket, Key=cos_file_path_updated
+    )
     logger.info(" Uploaded file ")
 
 
@@ -129,7 +138,9 @@ def wait_for_file(
     while elapsed < timeout:
         try:
             s3_client.head_object(Bucket=bucket, Key=predicted_file_path_updated)
-            print(f" File '{predicted_file_path_updated}' is now available in bucket '{bucket}'")
+            print(
+                f" File '{predicted_file_path_updated}' is now available in bucket '{bucket}'"
+            )
             return True
         except botocore.exceptions.ClientError as e:
             if e.response["Error"]["Code"] == "404":
@@ -140,5 +151,7 @@ def wait_for_file(
         time.sleep(interval)
         elapsed += interval
 
-    print(f" Timeout reached. File '{predicted_file_path_updated}' not found in '{bucket}' after {timeout} seconds.")
+    print(
+        f" Timeout reached. File '{predicted_file_path_updated}' not found in '{bucket}' after {timeout} seconds."
+    )
     return False
