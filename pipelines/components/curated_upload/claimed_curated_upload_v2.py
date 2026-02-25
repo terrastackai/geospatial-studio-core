@@ -157,7 +157,6 @@ def notify_df_api(onboarding_details: dict = None):
         event_data.update(
             {
                 "detail_type": "FT:Data:Finished",
-                "source": "com.ibm.dataset-factory-onboarding",
             }
         )
 
