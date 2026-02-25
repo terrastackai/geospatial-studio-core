@@ -55,7 +55,7 @@ WORKDIR /terratorch
 # Install Python dependencies with cache mount for faster rebuilds
 RUN pip install --upgrade pip && \
     pip install --timeout=7200 \
-    terratorch==1.2.2 \
+    git+https://github.com/terrastackai/terratorch.git@v1.2.3pre1 \
     'mlflow>=1.0.0' \
     'diffusers<=0.34.0' \
     ipython \
