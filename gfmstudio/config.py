@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     PIPELINES_V2_INFERENCE_ROOT_FOLDER: Optional[str] = Field(default=None)
     PIPELINES_V2_INTEGRATION_TYPE: Optional[str] = Field(
         default="database"
-    )  # Options: database, kafka, api
+    )
+    INFERENCE_LOGS_BASE_PATH: Optional[str] = Field(default="/data") # Options: database, kafka, api
 
     DEFAULT_SYSTEM_USER: Optional[str] = "system@ibm.com"
     AUTH_ENABLED: bool = Field(

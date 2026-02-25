@@ -947,7 +947,7 @@ async def get_task_step_logs(
     inference_id = task_id.split("-task")[0]
     object_key = f"{inference_id}/{task_id}/{task_id}-{step_id}-stdout.log"
 
-    logs_base_path = os.getenv("INFERENCE_LOGS_BASE_PATH", "/data")
+    logs_base_path = settings.INFERENCE_LOGS_BASE_PATH
     local_log_path = f"{logs_base_path}/{inference_id}/{task_id}/{task_id}-{step_id}-stdout.log"
     
     should_read_local = force_refresh or is_running
