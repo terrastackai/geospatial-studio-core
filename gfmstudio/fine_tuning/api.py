@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, Union
 
@@ -40,6 +41,7 @@ from gfmstudio.config import BASE_DIR, settings
 from gfmstudio.fine_tuning import schemas
 from gfmstudio.fine_tuning.core import object_storage
 from gfmstudio.fine_tuning.core.iterate_utils import update_terratorch_iterate_config
+from gfmstudio.fine_tuning.core.kubernetes import collect_pod_logs
 from gfmstudio.fine_tuning.core.mlflow_logs import get_mlflow_metrics
 from gfmstudio.fine_tuning.core.tuning_config_utils import (
     get_dataset_params,
@@ -55,6 +57,7 @@ from gfmstudio.fine_tuning.dataset_schemas import (
 from gfmstudio.fine_tuning.models import BaseModels, GeoDataset, Tunes, TuneTemplate
 from gfmstudio.fine_tuning.utils import tune_handlers
 from gfmstudio.fine_tuning.utils.dataset_handlers import (
+    capture_and_upload_job_log,
     data_and_label_match,
     extract_bands_from,
     list_zipped_files,
@@ -64,15 +67,11 @@ from gfmstudio.fine_tuning.utils.dataset_handlers import (
     validate_and_transform_options,
 )
 from gfmstudio.fine_tuning.utils.tune_handlers import get_rendered_tuning_template
+from gfmstudio.fine_tuning.utils.webhook_event_handlers import upload_logs_cos
 from gfmstudio.inference.v2.models import Inference
 from gfmstudio.inference.v2.models import Model as InferenceModel
 from gfmstudio.inference.v2.schemas import InferenceCreateInput, InferenceGetResponse
 from gfmstudio.log import logger, loglevel_name
-from gfmstudio.fine_tuning.utils.dataset_handlers import capture_and_upload_job_log
-from gfmstudio.fine_tuning.core.kubernetes import collect_pod_logs
-from gfmstudio.fine_tuning.utils.webhook_event_handlers import upload_logs_cos
-from datetime import datetime
-
 
 BASEDIR = os.path.dirname(os.path.abspath(__file__))
 pipeline_api_url = (
@@ -485,7 +484,7 @@ async def retrieve_tune(
     item = tunes_crud.get_by_id(db=db, item_id=tune_id, user=user)
     if not item:
         raise HTTPException(status_code=404, detail="Tune not found")
-    
+
     updated_dict = item.__dict__
 
     if item.status == "In_progress":
@@ -2439,7 +2438,7 @@ async def retrieve_dataset(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}
         )
     updated_dict = item.__dict__
-    
+
     if updated_dict["status"] == "Onboarding":
         cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
         if cos_log_path:

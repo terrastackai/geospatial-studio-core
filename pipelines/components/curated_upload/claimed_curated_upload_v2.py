@@ -153,7 +153,10 @@ def notify_df_api(onboarding_details: dict = None):
         "detail_type": "FT:Data:Onboarding",
         "source": "com.ibm.dataset-factory-onboarding",
     }
-    if "notifications" in df_webhooks_url and onboarding_details["status"] in ["Succeeded", "Failed"]:
+    if "notifications" in df_webhooks_url and onboarding_details["status"] in [
+        "Succeeded",
+        "Failed",
+    ]:
         event_data.update(
             {
                 "detail_type": "FT:Data:Finished",

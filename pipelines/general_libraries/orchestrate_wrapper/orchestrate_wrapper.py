@@ -3,7 +3,6 @@
 
 
 import ast
-import contextlib
 import json
 import logging
 import os
@@ -13,13 +12,13 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 from urllib.parse import urljoin
-import requests
-from sqlalchemy import create_engine, text
 
 # Uncomment next 2 lines for local testing
 import dotenv
+import requests
+from sqlalchemy import create_engine, text
+
 dotenv.load_dotenv()
 
 process_id = os.getenv("process_id", "sentinelhub_connector")
@@ -107,6 +106,7 @@ def notify_gfmaas_ui(
     except Exception as ex:
         logger.error("Failed to send task status. Reason: (%s)", ex)
 
+
 def stream_to_file(pipe, file, echo=False):
     for line in pipe.stdout:
         file.write(line)
@@ -116,22 +116,22 @@ def stream_to_file(pipe, file, echo=False):
 def run_and_log(task_id, process_exec, process_id, inference_folder):
     std_out_log_name = f"{inference_folder}/{task_id}/{task_id}-{process_id}-stdout.log"
     std_err_log_name = f"{inference_folder}/{task_id}/{task_id}-{process_id}-stderr.log"
-    
+
     try:
         with open(std_out_log_name, "a", buffering=1) as so:
-            with open(std_err_log_name, "a", buffering=1) as se:                
+            with open(std_err_log_name, "a", buffering=1) as se:
                 so.write("-----INVOKING TASK-----------------------------------\n")
                 so.write(f"Task ID: {task_id}\n")
                 so.write(f"Command: {process_exec}\n")
                 so.flush()
-                
+
                 try:
                     env = os.environ.copy()
-                    env['PYTHONUNBUFFERED'] = '1'
-                    env['GFM_STDOUT_LOG'] = std_out_log_name
-                    env['GFM_STDERR_LOG'] = std_err_log_name
-                    env['GFM_LOG_LEVEL'] = 'DEBUG'
-                    
+                    env["PYTHONUNBUFFERED"] = "1"
+                    env["GFM_STDOUT_LOG"] = std_out_log_name
+                    env["GFM_STDERR_LOG"] = std_err_log_name
+                    env["GFM_LOG_LEVEL"] = "DEBUG"
+
                     process = subprocess.Popen(
                         process_exec,
                         shell=True,
@@ -140,26 +140,28 @@ def run_and_log(task_id, process_exec, process_id, inference_folder):
                         stderr=subprocess.STDOUT,
                         env=env,
                         bufsize=1,
-                        universal_newlines=True
+                        universal_newlines=True,
                     )
 
                     stream_to_file(pipe=process, file=so)
-                    
+
                     returncode = process.wait()
-                    
+
                     so.write(f"\nReturn code: {returncode}\n")
                     so.flush()
-                    
+
                     return returncode
-                    
+
                 except Exception as ex:
                     error_msg = f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
                     so.write(f"\nError: {error_msg}\n")
                     so.flush()
                     return 500
-                    
+
     except Exception as ex:
-        logger.error(f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}")
+        logger.error(
+            f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
+        )
         return 500
 
 
@@ -280,7 +282,7 @@ def update_status_after_run(engine, process_id, inference_id, task_id, new_state
 
 def get_generic_processor_values(inference_folder: str, task_id: str):
     logger.info(
-        f">>>>>> Detected generic-python-processor, about to read script from inference_config file"
+        ">>>>>> Detected generic-python-processor, about to read script from inference_config file"
     )
     # read the script from the inference_config.yaml file
     inference_config_path = f"{inference_folder}/{inference_id}_config.json"
