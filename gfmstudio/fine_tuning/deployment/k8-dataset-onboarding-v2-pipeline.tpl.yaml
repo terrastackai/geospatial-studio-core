@@ -14,6 +14,7 @@ spec:
       containers:
       - name: onboarding-v2-pipeline-dataset-id
         image: DATASET_PIPELINE_IMAGE
+        imagePullPolicy: Always
         volumeMounts:
           - name: mount-data
             mountPath: /data

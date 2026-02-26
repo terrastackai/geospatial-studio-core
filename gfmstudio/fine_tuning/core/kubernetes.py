@@ -553,6 +553,8 @@ async def collect_pod_logs(tune_id: str, retry_label_lookup=True):
         # get logs
         command_get_logs = ["kubectl", "logs", result_pod[0], "--all-containers=true"]
         result_logs = await run_subprocess_cmds(command=command_get_logs)
+        if result_logs is None:
+            return
 
         # If there are logs
         if result_logs and result_logs[0] != "":
@@ -585,7 +587,7 @@ async def collect_pod_logs(tune_id: str, retry_label_lookup=True):
                     logger.info(f"kubectl retry result: {result}")
                     return result if result else (None, job_name)
 
-            logger.error(f"Error getting logs: {result_logs[1].decode('utf-8')}")
+            logger.error(f"Error getting logs: {result_logs[1]}")
             return
     else:
         logger.error(f"No POD found with the specified job name: {kjob_id}")
