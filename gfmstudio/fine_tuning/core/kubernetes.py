@@ -417,7 +417,7 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
                 "get",
                 "jobs",
                 "-l",
-                f"app-name={app_name}",
+                f"app={app_name}",
                 "-o",
                 "name",
             ]
