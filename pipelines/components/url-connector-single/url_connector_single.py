@@ -49,7 +49,7 @@ inf_task_table = os.getenv("inference_task_table", "task")
 
 process_id = os.getenv("process_id", "url-connector")
 
-stop_exit_code = int(os.getenv("stop_exit_code", 9876))
+stop_exit_code = int(os.getenv("stop_exit_code", 177))
 
 metric_manager = MetricManager(component_name=process_id)
 
