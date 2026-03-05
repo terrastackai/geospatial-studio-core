@@ -3,6 +3,7 @@
 
 
 import ast
+import glob
 import json
 import logging
 import os
@@ -535,7 +536,19 @@ while True:
             # )
             # Add logic when file has no main function
 
+            # Always expect the uploaded generic python scripts to accept the --input and --output folders.
+            output_folder = f"{inference_folder}/{task_id}"
+            input_folder = (
+                pred_files[0]
+                if (pred_files := glob.glob(f"{output_folder}/*_pred.tif"))
+                else output_folder
+            )
+            processor_parameters.update(
+                {"input": input_folder, "output": output_folder}
+            )
+
             process_exec = f"opentelemetry-instrument python {processor_file_path}"
+
             if processor_parameters:
                 for param_key, param_value in processor_parameters.items():
                     process_exec += f" --{param_key} {param_value}"
