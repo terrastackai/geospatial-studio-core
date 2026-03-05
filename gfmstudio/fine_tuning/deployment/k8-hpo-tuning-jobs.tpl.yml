@@ -33,7 +33,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   labels:
-    app-name: ${FTUNE_NAME}
+    app: ${FTUNE_NAME}
   name: ${FTUNE_NAME}-hpo
 spec:
   completions: 1
@@ -131,6 +131,8 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ftuning-script-${TUNE_ID}
+  labels:
+    app: ${FTUNE_NAME}
 data:
   ftuning.sh: |
     #!/bin/sh

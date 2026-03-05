@@ -182,31 +182,26 @@ async def handle_fine_tuning_webhooks(
 
     full_s3_log_file_path = ""
     # If detail_type is Ftune:Task:JobNotifications, delete resources
+    logs = await collect_pod_logs(tune_id=tune_id)
+
+    if logs:
+        # Push log file to COS
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
+        await upload_logs_cos(logs, full_s3_log_file_path)
+
     if event.detail_type == "Ftune:Task:JobNotifications":
         logger.debug(f"Ftune:Task:JobNotifications: {event.detail}")
         # if status is Failed, push the collected logs to COS
         if event.detail["status"] == "Failed":
             logger.debug(f"{tune_id}: Tuning task failed. Sending pod logs to COS")
-
-            logs = await collect_pod_logs(tune_id=tune_id)
-
-            if logs:
-                # Push log file to COS
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
-                await upload_logs_cos(logs, full_s3_log_file_path)
-
-            await free_k8s_resources(tune_id)
-
         elif event.detail["status"] == "Finished":
-
             logger.debug(f"{tune_id}: Tuning Task finished successfully")
-            await free_k8s_resources(tune_id)
-
         elif event.detail["status"] == "Error":
             logger.debug(
                 f"{tune_id}: Tuning Task Errored and resources already deleted."
             )
+        await free_k8s_resources(tune_id)
 
     try:
         tune_id = str(event.detail["tune_id"])
@@ -269,56 +264,19 @@ async def handle_dataset_factory_webhooks(
             detail={"message": f"Missing Dataset-{dataset_id} not updated."},
         )
     cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
-    k8s_delete_job_command = f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
-    k8s_delete_secret_command = (
-        f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
-    )
-    remove_job_deployment_file_command = (
-        f"rm {BASE_DIR}/deployment/jobs/onboarding-v2-pipeline-{dataset_id}.yaml"
-    )
-
-    try:
-        delete_job_output = subprocess.check_output(k8s_delete_job_command, shell=True)
-        logger.info(delete_job_output)
-    except subprocess.CalledProcessError as exc:
-        error_message = str(exc.output)
-        logger.error("Unable to remove the job.  Error - " + error_message)
-
-    try:
-        delete_secret_output = subprocess.check_output(
-            k8s_delete_secret_command, shell=True
-        )
-        logger.info(delete_secret_output)
-    except subprocess.CalledProcessError as exc:
-        error_message = str(exc.output)
-        logger.error("Unable to remove secrets from the job. Error - " + error_message)
-
-    try:
-        delete_deployment_file_output = subprocess.check_output(
-            remove_job_deployment_file_command, shell=True
-        )
-        logger.info(delete_deployment_file_output)
-    except subprocess.CalledProcessError as exc:
-        error_message = str(exc.output)
-        logger.error("Unable to remove deployment file, Error - " + error_message)
+    logger.debug(f"COS_LOGS_PATH=={cos_log_path}")
 
     logger.info(f"Retrieved dataset for webhook update: {dataset.id}")
     user = dataset.created_by or user
+    item = {
+        "status": event.detail["status"],
+        "error": transform_error_message(
+            event.detail["error_code"], event.detail["error_message"]
+        ),
+        "logs": cos_log_path,
+    }
     try:
-        if event.detail["status"] == "Failed":
-            dataset_crud.update(
-                db=session,
-                item_id=dataset_id,
-                item={
-                    "status": event.detail["status"],
-                    "error": transform_error_message(
-                        event.detail["error_code"], event.detail["error_message"]
-                    ),
-                    "logs": cos_log_path,
-                },
-                protected=False,
-            )
-        else:
+        if event.detail["status"] == "Succeeded":
             updated_training_params = dataset.training_params or {}
 
             # The label suffix should be prefixed with * for fine-tuning
@@ -341,19 +299,59 @@ async def handle_dataset_factory_webhooks(
                 if class_weights:
                     updated_training_params["class_weights"] = class_weights
 
-            dataset_crud.update(
-                db=session,
-                item_id=dataset_id,
-                item={
-                    "status": event.detail["status"],
+            item.update(
+                {
                     "size": event.detail["size"],
-                    "error": transform_error_message(
-                        event.detail["error_code"], event.detail["error_message"]
-                    ),
                     "training_params": updated_training_params,
-                },
-                protected=False,
+                }
             )
+        # Update dataset; status can be Onboarding, Succeeded or Failed
+        dataset_crud.update(
+            db=session,
+            item_id=dataset_id,
+            item=item,
+            protected=False,
+        )
+
+        # Job cleanup; when status is Succeeded or Failed
+        if event.detail["status"] != "Onboarding":
+            k8s_delete_job_command = (
+                f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
+            )
+            k8s_delete_secret_command = f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
+            remove_job_deployment_file_command = f"rm {BASE_DIR}/deployment/jobs/onboarding-v2-pipeline-{dataset_id}.yaml"
+
+            try:
+                delete_job_output = subprocess.check_output(
+                    k8s_delete_job_command, shell=True
+                )
+                logger.info(delete_job_output)
+            except subprocess.CalledProcessError as exc:
+                error_message = str(exc.output)
+                logger.error("Unable to remove the job.  Error - " + error_message)
+
+            try:
+                delete_secret_output = subprocess.check_output(
+                    k8s_delete_secret_command, shell=True
+                )
+                logger.info(delete_secret_output)
+            except subprocess.CalledProcessError as exc:
+                error_message = str(exc.output)
+                logger.error(
+                    "Unable to remove secrets from the job. Error - " + error_message
+                )
+
+            try:
+                delete_deployment_file_output = subprocess.check_output(
+                    remove_job_deployment_file_command, shell=True
+                )
+                logger.info(delete_deployment_file_output)
+            except subprocess.CalledProcessError as exc:
+                error_message = str(exc.output)
+                logger.error(
+                    "Unable to remove deployment file, Error - " + error_message
+                )
+
     except Exception:
         logger.exception("Dataset status was not updated.")
         raise HTTPException(
