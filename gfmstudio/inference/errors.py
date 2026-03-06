@@ -89,7 +89,7 @@ errors = {
         "downstreamModule": "dataService",
     },
     "1017": {
-        "downstreamMessage": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+        "downstreamMessage": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",  # noqa E501
         "uiMessage": "Connection timeout error.",
         "downstreamModule": "dataService, inferenceService",
     },

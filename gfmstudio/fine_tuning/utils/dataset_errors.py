@@ -32,7 +32,7 @@ known_errors = {
     },
     "0006": {},
     "0007": {
-        "is out of bounds for axis": "The custom bands is out of bounds.  Please only enter the bands that are available in the dataset.",
+        "is out of bounds for axis": "The custom bands is out of bounds.  Please only enter the bands that are available in the dataset.",  # noqa E501
     },
     "0008": {},
     "0009": {},
