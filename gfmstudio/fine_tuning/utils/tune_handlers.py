@@ -656,7 +656,7 @@ async def save_tune_config(
         500 if COS upload fails
     """
     # Upload to COS if not local environment
-    if settings.ENVIRONMENT.lower() != "local":
+    if settings.ENVIRONMENT.lower() not in ["local", "crc"]:
         s3 = object_storage.object_storage_client()
         try:
             await asyncify(s3.put_object)(
