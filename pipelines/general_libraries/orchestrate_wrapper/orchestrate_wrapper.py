@@ -552,6 +552,9 @@ while True:
             if processor_parameters:
                 for param_key, param_value in processor_parameters.items():
                     process_exec += f" --{param_key} {param_value}"
+            else:
+                # provide the default values
+                process_exec += f" --input {input_folder} --output {output_folder}"
 
             logger.info(
                 f">>>>>> Constructed process_exec for generic-python-processor: {process_exec}"
