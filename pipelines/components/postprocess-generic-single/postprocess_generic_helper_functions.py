@@ -423,7 +423,7 @@ def zip_inference_data(task_dir):
     zip_location = f"{task_dir}/archive.zip"
 
     directory = Path(task_dir)
-    geoserver_supported_extensions = ("*.tif", "*.gpkg", "*.shp", "*.nc")
+    geoserver_supported_extensions = ("*.tif", "*.gpkg", "*.shp", "*.shx", "*.dbf", "*.cpg", "*.prj", "*.nc")
 
     with ZipFile(zip_location, mode="w") as archive:
         for file_path in chain.from_iterable(directory.glob(ext) for ext in geoserver_supported_extensions):
