@@ -1,0 +1,104 @@
+name: Verify Commit Signatures
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - '**'  # Trigger on push to any branch
+
+jobs:
+  verify-signatures:
+    runs-on: ubuntu-latest
+    name: Check GPG Signed Commits
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for all branches and tags
+          
+      - name: Verify commit signatures
+        run: |
+          echo "Checking commit signatures..."
+          
+          # Determine the range of commits to check
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # For PRs, check commits between base and head
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            COMMIT_RANGE="${BASE_SHA}..${HEAD_SHA}"
+          else
+            # For push events, check the pushed commits
+            if [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
+              # New branch, check only the latest commit
+              COMMIT_RANGE="${{ github.sha }}"
+            else
+              COMMIT_RANGE="${{ github.event.before }}..${{ github.sha }}"
+            fi
+          fi
+          
+          echo "Checking commits in range: ${COMMIT_RANGE}"
+          
+          # Get list of commits
+          COMMITS=$(git rev-list ${COMMIT_RANGE})
+          
+          if [ -z "$COMMITS" ]; then
+            echo "No commits to verify"
+            exit 0
+          fi
+          
+          # Check each commit
+          UNSIGNED_COMMITS=()
+          for commit in $COMMITS; do
+            # Get commit signature verification status
+            SIGNATURE_STATUS=$(git verify-commit ${commit} 2>&1 || echo "UNSIGNED")
+            
+            if echo "$SIGNATURE_STATUS" | grep -q "Good signature\|gpg: Good signature"; then
+              echo "✓ Commit ${commit:0:8} is signed"
+            else
+              echo "✗ Commit ${commit:0:8} is NOT signed or has invalid signature"
+              COMMIT_INFO=$(git log -1 --pretty=format:"%h - %s (%an)" ${commit})
+              UNSIGNED_COMMITS+=("${COMMIT_INFO}")
+            fi
+          done
+          
+          # Report results
+          if [ ${#UNSIGNED_COMMITS[@]} -gt 0 ]; then
+            echo ""
+            echo "❌ Found ${#UNSIGNED_COMMITS[@]} unsigned commit(s):"
+            for commit_info in "${UNSIGNED_COMMITS[@]}"; do
+              echo "  - ${commit_info}"
+            done
+            echo ""
+            echo "All commits must be GPG signed. Please sign your commits:"
+            echo "  git commit -S -m 'your message'"
+            echo ""
+            echo "To sign previous commits, use:"
+            echo "  git rebase --exec 'git commit --amend --no-edit -n -S' -i <base-branch>"
+            exit 1
+          else
+            echo ""
+            echo "✅ All commits are properly signed!"
+          fi
+          
+      - name: Summary
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "### ✅ All commits are GPG signed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Some commits are not GPG signed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please ensure all commits are signed with GPG." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**How to sign commits:**" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "# Configure Git to sign commits" >> $GITHUB_STEP_SUMMARY
+            echo "git config --global user.signingkey YOUR_GPG_KEY_ID" >> $GITHUB_STEP_SUMMARY
+            echo "git config --global commit.gpgsign true" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# Sign a commit" >> $GITHUB_STEP_SUMMARY
+            echo "git commit -S -m 'your message'" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
