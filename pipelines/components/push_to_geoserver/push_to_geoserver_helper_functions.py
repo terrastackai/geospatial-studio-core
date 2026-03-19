@@ -153,7 +153,15 @@ def add_vector_to_geoserver(geo, workspace, file_path, layer_name, store_format)
     if store_format == "gpkg":
         zip_file_path = pack_files_in_zip(file_paths=[file_path], store_name=layer_name)
     elif store_format == "shp":
-        zip_file_path = file_path
+        # Shapefiles require companion files (.shx, .dbf, .prj, .cpg)
+        shp_base = os.path.splitext(file_path)[0]
+        companion_exts = [".shp", ".shx", ".dbf", ".prj", ".cpg"]
+        companion_files = []
+        for ext in companion_exts:
+            companion = shp_base + ext
+            if os.path.exists(companion):
+                companion_files.append(companion)
+        zip_file_path = pack_files_in_zip(file_paths=companion_files, store_name=layer_name)
 
     create_genericstore(
         geo=geo,
