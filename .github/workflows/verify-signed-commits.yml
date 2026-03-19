@@ -5,207 +5,109 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches:
-      - '**'  # Trigger on push to any branch
+      - main
+      - master
+      - develop
 
 jobs:
   verify-signatures:
     runs-on: ubuntu-latest
-    name: Check GPG Signed Commits
+    name: Check Commit Verification Status
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for all branches and tags
-      
-      - name: Import GPG keys from GitHub
+          
+      - name: Verify commits are verified on GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Importing GPG keys from GitHub API..."
+          echo "Checking commit verification status on GitHub..."
           
-          # Function to import keys for a commit
-          import_keys_for_commit() {
-            local commit=$1
-            local author_email=$(git log -1 --format='%ae' $commit)
-            local committer_email=$(git log -1 --format='%ce' $commit)
-            
-            echo "Processing commit $commit"
-            echo "  Author: $author_email"
-            echo "  Committer: $committer_email"
-            
-            # Try to get GitHub username from commit
-            local github_user=$(git log -1 --format='%an' $commit | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-            
-            # Import keys from GitHub for the user
-            if [ -n "$github_user" ]; then
-              echo "  Attempting to import keys for GitHub user: $github_user"
-              curl -sL "https://github.com/${github_user}.gpg" | gpg --import 2>/dev/null || true
-            fi
-            
-            # Also try with email username
-            local email_user=$(echo $author_email | cut -d'@' -f1)
-            if [ -n "$email_user" ] && [ "$email_user" != "$github_user" ]; then
-              echo "  Attempting to import keys for: $email_user"
-              curl -sL "https://github.com/${email_user}.gpg" | gpg --import 2>/dev/null || true
-            fi
-          }
-          
-          # Determine the range of commits to check
+          # Determine the base and head commits
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-            COMMIT_RANGE="${BASE_SHA}..${HEAD_SHA}"
-          else
-            if [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
-              COMMIT_RANGE="${{ github.sha }}"
-            else
-              COMMIT_RANGE="${{ github.event.before }}..${{ github.sha }}"
-            fi
-          fi
-          
-          # Import keys for all commits in range
-          COMMITS=$(git rev-list ${COMMIT_RANGE})
-          for commit in $COMMITS; do
-            import_keys_for_commit $commit
-          done
-          
-          echo ""
-          echo "GPG key import complete"
-          gpg --list-keys
-          
-      - name: Verify commit signatures
-        run: |
-          echo "Checking commit signatures..."
-          
-          # Determine the range of commits to check
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # For PRs, check commits between base and head
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-            COMMIT_RANGE="${BASE_SHA}..${HEAD_SHA}"
+            echo "Checking commits in PR from $BASE_SHA to $HEAD_SHA"
           else
             # For push events, check the pushed commits
-            if [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
-              # New branch, check only the latest commit
-              COMMIT_RANGE="${{ github.sha }}"
-            else
-              COMMIT_RANGE="${{ github.event.before }}..${{ github.sha }}"
-            fi
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+            echo "Checking pushed commits from $BASE_SHA to $HEAD_SHA"
           fi
           
-          echo "Checking commits in range: ${COMMIT_RANGE}"
-          
           # Get list of commits
-          COMMITS=$(git rev-list ${COMMIT_RANGE})
+          COMMITS=$(git rev-list $BASE_SHA..$HEAD_SHA)
           
           if [ -z "$COMMITS" ]; then
             echo "No commits to verify"
             exit 0
           fi
           
-          # Check each commit with detailed verification
-          UNSIGNED_COMMITS=()
-          INVALID_COMMITS=()
+          UNVERIFIED_COMMITS=()
+          TOTAL_COMMITS=0
           
+          # Check each commit using GitHub API
           for commit in $COMMITS; do
-            # Get commit info
-            COMMIT_SHORT=$(echo ${commit:0:8})
-            COMMIT_INFO=$(git log -1 --pretty=format:"%h - %s (%an <%ae>)" ${commit})
+            TOTAL_COMMITS=$((TOTAL_COMMITS + 1))
             
-            # Check if commit is signed
-            if git cat-file commit ${commit} | grep -q "^gpgsig "; then
-              # Commit has a signature, verify it
-              VERIFY_OUTPUT=$(git verify-commit ${commit} 2>&1)
-              VERIFY_STATUS=$?
-              
-              if [ $VERIFY_STATUS -eq 0 ]; then
-                # Check for "Good signature"
-                if echo "$VERIFY_OUTPUT" | grep -q "Good signature\|gpg: Good signature"; then
-                  echo "✓ Commit ${COMMIT_SHORT} is properly signed and verified"
-                  echo "  ${VERIFY_OUTPUT}" | head -n 2
-                else
-                  echo "⚠ Commit ${COMMIT_SHORT} is signed but verification unclear"
-                  echo "  ${VERIFY_OUTPUT}"
-                  INVALID_COMMITS+=("${COMMIT_INFO} - Signature verification unclear")
-                fi
-              else
-                echo "✗ Commit ${COMMIT_SHORT} has invalid or untrusted signature"
-                echo "  ${VERIFY_OUTPUT}"
-                INVALID_COMMITS+=("${COMMIT_INFO} - Invalid/untrusted signature")
-              fi
+            # Get commit info from git
+            COMMIT_MSG=$(git log --format=%s -n 1 $commit)
+            AUTHOR=$(git log --format='%an <%ae>' -n 1 $commit)
+            
+            # Query GitHub API for commit verification status
+            RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/$commit")
+            
+            # Extract verification status
+            VERIFIED=$(echo "$RESPONSE" | jq -r '.commit.verification.verified')
+            REASON=$(echo "$RESPONSE" | jq -r '.commit.verification.reason')
+            
+            if [ "$VERIFIED" == "true" ]; then
+              echo "✓ Commit $commit is VERIFIED: $COMMIT_MSG"
             else
-              echo "✗ Commit ${COMMIT_SHORT} is NOT signed"
-              UNSIGNED_COMMITS+=("${COMMIT_INFO}")
+              echo "✗ Commit $commit is NOT VERIFIED (reason: $REASON): $COMMIT_MSG (by $AUTHOR)"
+              UNVERIFIED_COMMITS+=("$commit: $COMMIT_MSG (by $AUTHOR) - Reason: $REASON")
             fi
-            echo ""
           done
           
-          # Report results
-          TOTAL_ISSUES=$((${#UNSIGNED_COMMITS[@]} + ${#INVALID_COMMITS[@]}))
+          echo ""
+          echo "Summary:"
+          echo "Total commits checked: $TOTAL_COMMITS"
+          echo "Unverified commits: ${#UNVERIFIED_COMMITS[@]}"
           
-          if [ $TOTAL_ISSUES -gt 0 ]; then
-            echo "=========================================="
-            echo "❌ COMMIT SIGNATURE VERIFICATION FAILED"
-            echo "=========================================="
+          if [ ${#UNVERIFIED_COMMITS[@]} -gt 0 ]; then
             echo ""
-            
-            if [ ${#UNSIGNED_COMMITS[@]} -gt 0 ]; then
-              echo "📝 Found ${#UNSIGNED_COMMITS[@]} unsigned commit(s):"
-              for commit_info in "${UNSIGNED_COMMITS[@]}"; do
-                echo "  - ${commit_info}"
-              done
-              echo ""
-            fi
-            
-            if [ ${#INVALID_COMMITS[@]} -gt 0 ]; then
-              echo "⚠️  Found ${#INVALID_COMMITS[@]} commit(s) with invalid/untrusted signatures:"
-              for commit_info in "${INVALID_COMMITS[@]}"; do
-                echo "  - ${commit_info}"
-              done
-              echo ""
-            fi
-            
-            echo "All commits must be GPG signed with a trusted key."
+            echo "❌ The following commits are not verified on GitHub:"
+            for commit_info in "${UNVERIFIED_COMMITS[@]}"; do
+              echo "  - $commit_info"
+            done
             echo ""
-            echo "📚 How to sign commits:"
-            echo "  1. Generate a GPG key: gpg --full-generate-key"
-            echo "  2. List your keys: gpg --list-secret-keys --keyid-format=long"
-            echo "  3. Configure Git: git config --global user.signingkey YOUR_KEY_ID"
-            echo "  4. Enable signing: git config --global commit.gpgsign true"
-            echo "  5. Add key to GitHub: https://github.com/settings/keys"
+            echo "To fix this:"
+            echo "1. Sign your commits using GPG or SSH keys"
+            echo "2. Add your signing key to your GitHub account"
+            echo "3. Ensure the email in your commit matches your GitHub account"
             echo ""
-            echo "To sign existing commits:"
-            echo "  git rebase --exec 'git commit --amend --no-edit -n -S' -i <base-branch>"
-            echo ""
+            echo "See: https://docs.github.com/en/authentication/managing-commit-signature-verification"
             exit 1
           else
-            echo "=========================================="
-            echo "✅ ALL COMMITS PROPERLY SIGNED AND VERIFIED"
-            echo "=========================================="
+            echo ""
+            echo "✅ All commits are properly verified on GitHub!"
           fi
           
-      - name: Summary
-        if: always()
-        run: |
-          if [ $? -eq 0 ]; then
-            echo "### ✅ All commits are GPG signed and verified" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### ❌ Some commits are not properly signed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Please ensure all commits are signed with GPG and the public key is added to GitHub." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**How to sign commits:**" >> $GITHUB_STEP_SUMMARY
-            echo '```bash' >> $GITHUB_STEP_SUMMARY
-            echo "# Generate a GPG key" >> $GITHUB_STEP_SUMMARY
-            echo "gpg --full-generate-key" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Configure Git to sign commits" >> $GITHUB_STEP_SUMMARY
-            echo "git config --global user.signingkey YOUR_GPG_KEY_ID" >> $GITHUB_STEP_SUMMARY
-            echo "git config --global commit.gpgsign true" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Add your public key to GitHub" >> $GITHUB_STEP_SUMMARY
-            echo "gpg --armor --export YOUR_GPG_KEY_ID" >> $GITHUB_STEP_SUMMARY
-            echo "# Then paste at: https://github.com/settings/keys" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
+      - name: Comment on PR (if unsigned commits found)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **Unsigned Commits Detected**\n\nSome commits in this PR are not signed. Please sign your commits using GPG or SSH keys.\n\nFor more information, see:\n- [About commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)\n- [Signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits)'
+            })
 
 # Made with Bob
