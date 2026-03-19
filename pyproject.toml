@@ -148,6 +148,10 @@ max-complexity = 10
 [tool.ruff.lint.isort]
 known-first-party = ["geostudio", "gfmstudio"]
 
+[tool.ruff.per-file-ignores]
+"gfmstudio/db_migrations/versions/*.py" = ["I001", "F401"]
+"gfmstudio/auth/db_migrations/versions/*.py" = ["I001", "F401"]
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "-ra -q --strict-markers"

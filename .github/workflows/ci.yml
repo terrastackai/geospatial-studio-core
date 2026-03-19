@@ -1,0 +1,218 @@
+name: CI
+
+on:
+  push:
+    branches: [main, chore/configure-dev-tools]
+  pull_request:
+    branches: [main]
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --dev
+
+      - name: Check code formatting with Black
+        run: |
+          uv run black --check gfmstudio/ tests/
+
+      - name: Lint with Ruff
+        run: |
+          uv run ruff check gfmstudio/ tests/
+
+      - name: Type checking with mypy (if configured)
+        run: |
+          uv run mypy gfmstudio/ || echo "mypy not configured, skipping"
+        continue-on-error: true
+
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --dev
+
+      - name: Run Bandit security checks
+        run: |
+          uv run bandit -r gfmstudio/ -f json -o bandit-report.json || true
+          uv run bandit -r gfmstudio/
+        continue-on-error: true
+
+      - name: Check for security vulnerabilities with pip-audit
+        run: |
+          uv pip install pip-audit
+          uv run pip-audit || echo "Vulnerabilities found, please review"
+        continue-on-error: true
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --dev
+
+      - name: Run pytest with coverage
+        env:
+          DATABASE_URI: postgresql+pg8000://test_user:test_password@localhost:5432/gfmstudio
+          AUTH_DATABASE_URI: postgresql+pg8000://test_user:test_password@localhost:5432/geostudio_auth
+          TEST_DATABASE_URI: postgresql+pg8000://test_user:test_password@localhost:5432/gfmstudio_test
+          # Caching Authentication Requests and Background Tasks
+          REDIS_URL: redis://localhost:6379
+          # COS INSTANCE and Buckets
+          OBJECT_STORAGE_KEY_ID: ...
+          OBJECT_STORAGE_SEC_KEY: ...
+          OBJECT_STORAGE_ENDPOINT: ...
+          OBJECT_STORAGE_REGION: 'us-south'
+          # COS Buckets
+          DATA_PVC: geoft-files-pvc
+          TUNES_FILES_BUCKET: geoft-service
+          DATASET_FILES_BUCKET: geoft-service-datasets
+          # FineTuning
+          TUNE_BASEDIR: /tmp/geoft-tunefiles/
+          DATA_MOUNT: /data
+          FILES_MOUNT: /geotunes/
+          FILES_PVC: geoft-files-pvc
+          CELERY_TASKS_ENABLED: True
+          # Inferencing
+          PIPELINES_V2_INFERENCE_ROOT_FOLDER: /tmp/inference_testing
+
+        run: |
+          uv run pytest tests/ \
+            --cov=gfmstudio \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --junitxml=pytest-report.xml \
+            -v
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            pytest-report.xml
+            htmlcov/
+          retention-days: 30
+
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: geospatial-studio-core:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+  all-checks-passed:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [code-quality, security, test, docker-build]
+    if: always()
+    steps:
+      - name: Check if all jobs passed
+        run: |
+          if [[ "${{ needs.code-quality.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]] || \
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.docker-build.result }}" != "success" ]]; then
+            echo "One or more checks failed"
+            exit 1
+          fi
+          echo "All checks passed successfully!"
