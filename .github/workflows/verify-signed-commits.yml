@@ -1,0 +1,109 @@
+name: Verify Commit Signatures
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - '**'
+
+jobs:
+  verify-signatures:
+    runs-on: ubuntu-latest
+    name: Check Commit Verification Status
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for all branches and tags
+          
+      - name: Verify commits are verified on GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking commit verification status on GitHub..."
+          
+          # Determine the base and head commits
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            echo "Checking commits in PR from $BASE_SHA to $HEAD_SHA"
+          else
+            # For push events, check the pushed commits
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+            echo "Checking pushed commits from $BASE_SHA to $HEAD_SHA"
+          fi
+          
+          # Get list of commits
+          COMMITS=$(git rev-list $BASE_SHA..$HEAD_SHA)
+          
+          if [ -z "$COMMITS" ]; then
+            echo "No commits to verify"
+            exit 0
+          fi
+          
+          UNVERIFIED_COMMITS=()
+          TOTAL_COMMITS=0
+          
+          # Check each commit using GitHub API
+          for commit in $COMMITS; do
+            TOTAL_COMMITS=$((TOTAL_COMMITS + 1))
+            
+            # Get commit info from git
+            COMMIT_MSG=$(git log --format=%s -n 1 $commit)
+            AUTHOR=$(git log --format='%an <%ae>' -n 1 $commit)
+            
+            # Query GitHub API for commit verification status
+            RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/$commit")
+            
+            # Extract verification status
+            VERIFIED=$(echo "$RESPONSE" | jq -r '.commit.verification.verified')
+            REASON=$(echo "$RESPONSE" | jq -r '.commit.verification.reason')
+            
+            if [ "$VERIFIED" == "true" ]; then
+              echo "✓ Commit $commit is VERIFIED: $COMMIT_MSG"
+            else
+              echo "✗ Commit $commit is NOT VERIFIED (reason: $REASON): $COMMIT_MSG (by $AUTHOR)"
+              UNVERIFIED_COMMITS+=("$commit: $COMMIT_MSG (by $AUTHOR) - Reason: $REASON")
+            fi
+          done
+          
+          echo ""
+          echo "Summary:"
+          echo "Total commits checked: $TOTAL_COMMITS"
+          echo "Unverified commits: ${#UNVERIFIED_COMMITS[@]}"
+          
+          if [ ${#UNVERIFIED_COMMITS[@]} -gt 0 ]; then
+            echo ""
+            echo "❌ The following commits are not verified on GitHub:"
+            for commit_info in "${UNVERIFIED_COMMITS[@]}"; do
+              echo "  - $commit_info"
+            done
+            echo ""
+            echo "To fix this:"
+            echo "1. Sign your commits using GPG or SSH keys"
+            echo "2. Add your signing key to your GitHub account"
+            echo "3. Ensure the email in your commit matches your GitHub account"
+            echo ""
+            echo "See: https://docs.github.com/en/authentication/managing-commit-signature-verification"
+            exit 1
+          else
+            echo ""
+            echo "✅ All commits are properly verified on GitHub!"
+          fi
+          
+      - name: Comment on PR (if unsigned commits found)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **Unsigned Commits Detected**\n\nSome commits in this PR are not signed. Please sign your commits using GPG or SSH keys.\n\nFor more information, see:\n- [About commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)\n- [Signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits)'
+            })
