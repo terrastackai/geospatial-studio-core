@@ -123,84 +123,39 @@ async def invoke_tune_upload_handler(
         logger.exception(f"Network error during download:{e}")
         raise
 
-    if settings.ENVIRONMENT.lower() in ["local", "crc"]:
-        tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
-        if os.path.isdir(tune_dir) is False:
-            os.mkdir(tune_dir)
+    tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
+    if os.path.isdir(tune_dir) is False:
+        os.mkdir(tune_dir)
 
-        tune_config_deploy_bucket_dir = os.path.join(
-            settings.TUNE_BASEDIR, tune_config_deploy_bucket_key
-        )
-        tune_config_bucket_dir = os.path.join(
-            settings.TUNE_BASEDIR, tune_config_bucket_key
-        )
-        tune_checkpoint_bucket_dir = os.path.join(
-            settings.TUNE_BASEDIR, tune_checkpoint_bucket_key
-        )
+    tune_config_deploy_bucket_dir = os.path.join(
+        settings.TUNE_BASEDIR, tune_config_deploy_bucket_key
+    )
+    tune_config_bucket_dir = os.path.join(
+        settings.TUNE_BASEDIR, tune_config_bucket_key
+    )
+    tune_checkpoint_bucket_dir = os.path.join(
+        settings.TUNE_BASEDIR, tune_checkpoint_bucket_key
+    )
 
-        if tune_config_url[0:4] == "http":
-            with open(tune_config_deploy_bucket_dir, "w") as config_file:
-                config_file.write(tune_config_response.text)
-            with open(tune_config_bucket_dir, "w") as config_file:
-                config_file.write(tune_config_response.text)
+    if tune_config_url[0:4] == "http":
+        with open(tune_config_deploy_bucket_dir, "w") as config_file:
+            config_file.write(tune_config_response.text)
+        with open(tune_config_bucket_dir, "w") as config_file:
+            config_file.write(tune_config_response.text)
 
-        elif tune_config_url[0:4] == "file":
-            if not os.path.exists(tune_config_deploy_bucket_dir):
-                shutil.copyfile(tune_config_url[7:], tune_config_deploy_bucket_dir)
-            if not os.path.exists(tune_config_bucket_dir):
-                shutil.copyfile(tune_config_url[7:], tune_config_bucket_dir)
+    elif tune_config_url[0:4] == "file":
+        if not os.path.exists(tune_config_deploy_bucket_dir):
+            shutil.copyfile(tune_config_url[7:], tune_config_deploy_bucket_dir)
+        if not os.path.exists(tune_config_bucket_dir):
+            shutil.copyfile(tune_config_url[7:], tune_config_bucket_dir)
 
-        if tune_checkpoint_url[0:4] == "http":
-            with open(tune_checkpoint_bucket_dir, "wb") as checkpoint_file:
-                checkpoint_file.write(tune_checkpoint_response.content)
-        elif tune_checkpoint_url[0:4] == "file":
-            if not os.path.exists(tune_checkpoint_bucket_dir):
-                shutil.copyfile(tune_checkpoint_url[7:], tune_checkpoint_bucket_dir)
+    if tune_checkpoint_url[0:4] == "http":
+        with open(tune_checkpoint_bucket_dir, "wb") as checkpoint_file:
+            checkpoint_file.write(tune_checkpoint_response.content)
+    elif tune_checkpoint_url[0:4] == "file":
+        if not os.path.exists(tune_checkpoint_bucket_dir):
+            shutil.copyfile(tune_checkpoint_url[7:], tune_checkpoint_bucket_dir)
 
-    else:
-        pipelines_bucket_name = settings.TUNES_FILES_BUCKET
-        try:
-            logger.info(f"Connect to  cos bucket{pipelines_bucket_name}")
-            pipeline_s3_client = boto3.client(
-                "s3",
-                aws_access_key_id=settings.OBJECT_STORAGE_KEY_ID,
-                aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
-                endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
-                config=Config(
-                    signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION
-                ),
-                verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
-            )
-        except ValueError as exc:
-            logger.error(f"pipeline_s3_client Misconfiguration: {str(exc)}")
-
-        try:
-            logger.info("Uploading tune config file")
-            # Uploading both config_deploy.yaml and {tune_id}_config.yaml
-            pipeline_s3_client.upload_fileobj(
-                tune_config_response.raw,
-                Bucket=pipelines_bucket_name,
-                Key=tune_config_deploy_bucket_key,
-            )
-            pipeline_s3_client.upload_fileobj(
-                tune_config_response.raw,
-                Bucket=pipelines_bucket_name,
-                Key=tune_config_bucket_key,
-            )
-            logger.info("Uploading tune config Succeeded")
-
-            logger.info("uploading tune checkpoint file")
-            pipeline_s3_client.upload_fileobj(
-                tune_checkpoint_response.raw,
-                Bucket=pipelines_bucket_name,
-                Key=tune_checkpoint_bucket_key,
-            )
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            logger.exception(f"Network error during download:{e}")
-            raise
-        except ClientError as e:
-            logger.exception(f"Failed to upload files to cos: {e}")
-            raise
     logger.info("Updating the tune with {tune_id} status to Finished")
     tunes_crud.update(
         db=db,
