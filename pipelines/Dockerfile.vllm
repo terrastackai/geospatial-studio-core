@@ -2,23 +2,24 @@
 # Build Arguments
 ################################################################################
 ARG CUDA_VERSION=13.1.1
+ARG PYTHON_VERSION=3.12
 
 ################################################################################
 # Stage 1: Builder
 ################################################################################
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu24.04 AS builder
 
-ARG PYTHON_VERSION=3.11 \
-    VLLM_VERSION=0.17.1
+ARG PYTHON_VERSION
+ARG VLLM_VERSION=0.17.1
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     CUDA_HOME=/usr/local/cuda
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-venv \
-    python3-dev \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-venv \
+    python${PYTHON_VERSION}-dev \
     git \
     curl \
     build-essential \
@@ -30,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-RUN python3 -m venv /opt/venv
+RUN python${PYTHON_VERSION} -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -38,19 +39,17 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir torch==2.4.0 --index-url https://download.pytorch.org/whl/cu121 && \
     pip install --no-cache-dir vllm==${VLLM_VERSION} "terratorch[vllm]" GDAL==$(gdal-config --version)
 
-RUN find /opt/venv -type d -name "tests" -exec rm -rf {} + && \
-    find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + && \
-    find /opt/venv -name "*.a" -delete && \
-    find /opt/venv -name "*.pyc" -delete && \
-    find /opt/venv -name "*.so" -exec strip --strip-unneeded {} +
-
 ################################################################################
 # Stage 2: Runtime
 ################################################################################
 FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu24.04 AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-minimal \
+ARG PYTHON_VERSION
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-venv \
     libgomp1 \
     libgdal34 \
     && rm -rf /var/lib/apt/lists/*
@@ -64,11 +63,16 @@ ENV UID=10001 \
 RUN groupadd -g ${UID} -r ${USER} && \
     useradd -l -u ${UID} -r -g ${USER} ${USER} -ms /bin/bash && \
     mkdir -p /app/models/huggingface_cache/hub /data/output && \
-    chown -R ${USER}:${USER} /app /data
+    chown -R ${USER}:${USER} /app /data && \
+    chmod -R g=u /app /data
 
 ENV HF_HOME=/app/models/huggingface_cache \
     TERRATORCH_SEGMENTATION_IO_PROCESSOR_CONFIG='{"output_path": "/data/output/"}' \
     GDAL_CONFIG=/usr/bin/gdal-config \
+    HOME=/app \
+    MPLCONFIGDIR=/app/.config/matplotlib \
+    XDG_CACHE_HOME=/app/.cache \
+    XDG_CONFIG_HOME=/app/.config \
     LC_ALL=C.UTF-8 \
     LANG=C.UTF-8
 
