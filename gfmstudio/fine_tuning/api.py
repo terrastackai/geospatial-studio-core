@@ -982,7 +982,7 @@ async def submit_hpo_tune_yaml(
         bucket_key = f"tune-tasks/{tune_id}/{tune_id}_config.yaml"
         tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
         if os.path.isdir(tune_dir) is False:
-            os.mkdir(tune_dir)
+            os.makedirs(tune_dir, exist_ok=True)
 
         bucket_dir = os.path.join(settings.TUNE_BASEDIR, bucket_key)
         config_data = yaml.load(config_content, Loader=yaml.SafeLoader)

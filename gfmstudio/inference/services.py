@@ -125,7 +125,7 @@ async def invoke_tune_upload_handler(
 
     tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
     if os.path.isdir(tune_dir) is False:
-        os.mkdir(tune_dir)
+        os.makedirs(tune_dir, exist_ok=True)
 
     tune_config_deploy_bucket_dir = os.path.join(
         settings.TUNE_BASEDIR, tune_config_deploy_bucket_key
