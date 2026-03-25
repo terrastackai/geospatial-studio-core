@@ -10,10 +10,8 @@ from ...config import settings
 
 engine = create_engine(
     str(settings.DATABASE_URI),
-    # If using PgBouncer, 30 is quite high. 5-10 is usually plenty 
-    # because PgBouncer multiplexes these connections.
-    pool_size=10, 
-    max_overflow=5,
+    pool_size=30, 
+    max_overflow=10,
     pool_pre_ping=True,
     pool_recycle=1800, # Recycle faster than PgBouncer's server_lifetime
     
