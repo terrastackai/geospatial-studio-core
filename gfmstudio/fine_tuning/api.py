@@ -110,20 +110,6 @@ dataset_crud = crud.ItemCrud(model=GeoDataset)
 inference_crud = crud.ItemCrud(model=Inference)
 inference_model_crud = crud.ItemCrud(model=InferenceModel)
 
-"""
-Create file folders if they don't exist already
-"""
-if settings.ENVIRONMENT.lower() in ["local", "crc"]:
-    tasks_dir = os.path.join(settings.TUNE_BASEDIR, "tune-tasks")
-    if os.path.isdir(tasks_dir) is False:
-        logger.info(f"Creating tasks directory: {tasks_dir}")
-        os.makedirs(tasks_dir)
-
-    trained_dir = os.path.join(settings.TUNE_BASEDIR, "pre-trained")
-    if os.path.isdir(trained_dir) is False:
-        logger.info(f"Creating pre-trained directory: {trained_dir}")
-        os.makedirs(trained_dir)
-
 
 ###############################################
 # ---- Get token endpoint
