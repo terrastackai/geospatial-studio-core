@@ -16,8 +16,17 @@ def get_db() -> Generator[Session, None, None]:
     logger.debug("Current Connection Pool Number: %s", engine.pool.checkedout())
     try:
         yield db
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass # Ignore rollback errors on dead connections
+        raise
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass # Ignore close errors on dead connections (PgBouncer)
 
 
 def is_valid_uuid(value):
