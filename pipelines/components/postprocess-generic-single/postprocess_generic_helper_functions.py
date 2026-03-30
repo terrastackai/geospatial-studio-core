@@ -8,6 +8,7 @@ import glob
 import json
 import rasterio
 import rioxarray
+import mgrs
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -353,30 +354,83 @@ def get_lulc_tile_for_input(input_image_path):
     # Setup output directory
     outputs_dir = "/".join(input_image_path.split("/")[:-1])
     Path(outputs_dir).mkdir(parents=True, exist_ok=True)
-    # Read LULC shapefile
-    gdf = gpd.read_file(LULC_TILE_SHAPEFILE)
     # Get input image bbox
     bbox = rdo.get_raster_bbox(input_image_path)
-    tile_list = get_tiles_list([bbox[0], bbox[1], bbox[2], bbox[3]])
-    # Prepare dataframe
-    df_tmp = pd.DataFrame({"file": [input_image_path]})
-    df_tmp["geometry"] = box(bbox.bottom, bbox.left, bbox.right, bbox.top)
-    gdf_bbox = gpd.GeoDataFrame(df_tmp, geometry="geometry", crs="EPSG:4326")
-    # Join lulc shapefile dataframe with model input image dataframe
-    # to create a dataframe of lulc tile paths, model input image path
-    # and model input bbox.
-    join = gpd.sjoin(left_df=gdf, right_df=gdf_bbox, how="right", predicate="intersects")
-    # Iterate through the list of relavent tiles, then reproject as required.
-    for j in range(len(tile_list)):
-        tile_j_value = join[join["tile"] == tile_list[j]]["tile"].values[0]
-        file_j_value = join[join["tile"] == tile_list[j]]["file"].values[0]
-        if tile_j_value == "nan" or not join["tile"].values[j]:
-            continue
+
+    m = mgrs.MGRS()
+    grid_zones = set()
+
+    # Sample points across bbox to find all intersecting grid zones
+    lat_range = bbox.top - bbox.bottom
+    lon_range = bbox.right - bbox.left
+    lat_samples = max(3, min(10, int(lat_range / 0.5)))
+    lon_samples = max(3, min(10, int(lon_range / 0.5)))
+    
+    for lat in np.linspace(bbox.bottom, bbox.top, lat_samples):
+        for lon in np.linspace(bbox.left, bbox.right, lon_samples):
+            try:
+                # Get MGRS code for this point
+                mgrs_code = m.toMGRS(lat, lon, MGRSPrecision=0)
+                # Extract grid zone (first 3 characters: zone number + latitude band)
+                # Example: "37MBT12345678" -> "37M"
+                grid_zone = mgrs_code[:3]
+                grid_zones.add(grid_zone)
+            except Exception as e:
+                # Skip invalid coordinates (e.g., near poles)
+                continue
+    
+    if not grid_zones:
+        logger.error("Failed to calculate MGRS grid zones for input image")
+        return None
+
+    # Find matching LULC tiles in the data directory
+    # Expected naming: [GridZone]_[StartDate]-[EndDate].tiff
+    # Example: 37N_20240101-20241231.tiff
+    tile_paths = []
+    missing_zones = []
+    
+    # Get all available LULC files
+    available_files = glob.glob(os.path.join(LULC_TILE_ROOT, "*.tif"))
+    available_files.extend(glob.glob(os.path.join(LULC_TILE_ROOT, "*.tiff")))
+    
+    for grid_zone in sorted(grid_zones):
+        found = False
+        
+        # Find file matching this grid zone
+        for filepath in available_files:
+            filename = os.path.basename(filepath)
+            
+            # Check if filename starts with the grid zone
+            # Handles: 37N_20240101-20241231.tiff, 37N.tif, etc.
+            if filename.startswith(grid_zone):
+                tile_paths.append(filepath)
+                found = True
+                logger.info(f"Found LULC tile for zone {grid_zone}: {filename}")
+                break
+        
+        if not found:
+            missing_zones.append(grid_zone)
+    
+    if missing_zones:
+        logger.warning(
+            f"Missing LULC tiles for {len(missing_zones)} grid zones: {missing_zones}. "
+            f"Download from: "
+            f"https://lulctimeseries.blob.core.windows.net/lulctimeseriesv003/lc2024/"
+        )
+    
+    if not tile_paths:
+        logger.error(
+            f"No LULC tiles found for calculated grid zones: {sorted(grid_zones)}. "
+            f"Please download required tiles to {LULC_TILE_ROOT}"
+        )
+        return None
+
+    for j, tile_path in enumerate(tile_paths):
         tmp_unique_id = str(uuid4())
         # Match LULC tile to model input image
         output_tmp_path = rdo.match_raster_to_target(
-            input_file=LULC_TILE_ROOT + tile_j_value,
-            target_file=file_j_value,
+            input_file=tile_path,
+            target_file=input_image_path,
             output_suffix=f"_{tmp_unique_id}_padded",
         )
         os.system(f"mv {output_tmp_path} {outputs_dir}/lulc_tile{str(j)}.tif")
