@@ -435,6 +435,7 @@ def get_lulc_tile_for_input(input_image_path):
         )
         os.system(f"mv {output_tmp_path} {outputs_dir}/lulc_tile{str(j)}.tif")
     lulc_tiles = glob.glob(outputs_dir + "/lulc_tile*")
+    lulc_file_path = ""
     if len(lulc_tiles) > 1:
         print("mosaic")
         lulc_file_path = rdo.create_mosaic(
