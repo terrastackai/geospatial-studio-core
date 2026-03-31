@@ -14,8 +14,8 @@ from uuid import uuid4
 from zipfile import ZipFile
 
 import geopandas as gpd
+import mgrs
 import numpy as np
-import pandas as pd
 import rasterio
 import rioxarray
 import xarray as xr
@@ -29,15 +29,20 @@ from postprocess_regularization import (
 )
 from rasterio import features
 from shapely.geometry import Polygon, box
-import mgrs
 
 # LULC data location
 LULC_TILE_ROOT = os.environ.get("LULC_SHARED_DATA_ROOT", "/auxdata/lulc/lc2021/")
 LULC_TILE_SHAPEFILE = os.environ.get("LULC_TILE_SHAPEFILE", "/auxdata/lulc/tiles.shp")
-LAND_POLYGON_PATH = os.environ.get("LAND_POLYGON_PATH", "/auxdata/general/land_polygons.shp")
+LAND_POLYGON_PATH = os.environ.get(
+    "LAND_POLYGON_PATH", "/auxdata/general/land_polygons.shp"
+)
 
 # Cloud mask
-S2_CLOUD_MASK = [3, 8, 9]  # Cloud shadows, Cloud medium probability, Cloud high probability
+S2_CLOUD_MASK = [
+    3,
+    8,
+    9,
+]  # Cloud shadows, Cloud medium probability, Cloud high probability
 HLS_CLOUD_MASK = ["0", "0", "0", "0", "1", "1", "1", "1"]
 CLOUD_VALUE = 999
 
@@ -48,7 +53,9 @@ SNOW_OR_ICE_VALUE = 998
 
 # Permanent water mask
 S2_PERMANENT_WATER_MASK = [6]  # Permanent water using S2 SCL
-S2_LULC_PERMANENT_WATER_MASK = [1]  # https://www.arcgis.com/home/item.html?id=cfcb7609de5f478eb7666240902d4d3d
+S2_LULC_PERMANENT_WATER_MASK = [
+    1
+]  # https://www.arcgis.com/home/item.html?id=cfcb7609de5f478eb7666240902d4d3d
 S2_LULC_PERMANENT_WATER_BAND_INDEX = 0
 HLS_PERMANENT_WATER_MASK = ["0", "0", "1", "0", "0", "0", "0", "0"]
 PERMANENT_WATER_VALUE = 997
@@ -81,13 +88,15 @@ def resize_image(image, input_image=None, bbox=None):
     def __resize_image(input_image):
         if input_image:
             get_bbox_cmd = f"""gdalinfo -json {input_image} | jq '(.cornerCoordinates.upperLeft[0] | tostring) + " " + (.cornerCoordinates.upperLeft[1] | tostring ) + " " + (.cornerCoordinates.lowerRight[0] | tostring) + " " + (.cornerCoordinates.lowerRight[1] | tostring )'"""
-            input_image_bbox = check_output([get_bbox_cmd], shell=True, text=True).replace('"', "").replace("\n", "")
+            input_image_bbox = (
+                check_output([get_bbox_cmd], shell=True, text=True)
+                .replace('"', "")
+                .replace("\n", "")
+            )
             os.system(f"cp {image} {image}-temp.tif")
             command = f"gdal_translate -projwin {input_image_bbox} -of GTiff {image}-temp.tif {image}"
         elif bbox:
-            command = (
-                f"gdal_translate -projwin {bbox[0]} {bbox[3]} {bbox[2]} {bbox[1]} -of GTiff {image}-temp.tif {image}"
-            )
+            command = f"gdal_translate -projwin {bbox[0]} {bbox[3]} {bbox[2]} {bbox[1]} -of GTiff {image}-temp.tif {image}"
 
         os.system(command)
         os.system(f"rm {image}-temp.tif")
@@ -119,8 +128,16 @@ def read_json_with_retries(filepath, max_retries=5, base_delay=0.5):
             time.sleep(base_delay * (2 ** (attempt - 1)))
 
 
-def hls_masking(xds, ids, fmask_index=6, mask_bits=["0", "0", "0", "0", "1", "1", "1", "1"], mask_to_value=999):
-    logger.info(f">>>>>>>>>>>> Performing mask for scenes {mask_bits} with masked values set to {mask_to_value}")
+def hls_masking(
+    xds,
+    ids,
+    fmask_index=6,
+    mask_bits=["0", "0", "0", "0", "1", "1", "1", "1"],
+    mask_to_value=999,
+):
+    logger.info(
+        f">>>>>>>>>>>> Performing mask for scenes {mask_bits} with masked values set to {mask_to_value}"
+    )
     qVals = list(np.unique(ids[fmask_index].astype(int)))
     goodQuality = []
     for v in qVals:
@@ -161,7 +178,9 @@ def s2_masking(xds, ids, fmask_index, scene_classification, mask_to_value):
     logger.info(
         f">>>>>>>>>>>> Performing mask for scenes {scene_classification} with masked values set to {mask_to_value}"
     )
-    mask = ids[fmask_index].values == scene_classification[0]  # initalise the mask array
+    mask = (
+        ids[fmask_index].values == scene_classification[0]
+    )  # initalise the mask array
     for scene_class in range(1, len(scene_classification)):
         mask = np.logical_or(
             mask, ids[fmask_index].values == scene_classification[scene_class]
@@ -183,12 +202,19 @@ def mask_and_set_to(xds, ids, masking_type, inference_dict, i=0):
         mask_band = masking_config.get("band", None)
         if mask_band is not None:
             encoding_type = masking_config.get("encoding", None)
-            if encoding_type is not None and "bands" in inference_dict["model_input_data_spec"][i]:
-                model_input_data_spec_bands = inference_dict["model_input_data_spec"][i]["bands"]
+            if (
+                encoding_type is not None
+                and "bands" in inference_dict["model_input_data_spec"][i]
+            ):
+                model_input_data_spec_bands = inference_dict["model_input_data_spec"][
+                    i
+                ]["bands"]
                 if encoding_type == "sentinel2_lulc":
                     mask_band_index = S2_LULC_PERMANENT_WATER_BAND_INDEX
                 else:
-                    mask_band_index = search_band_dict(model_input_data_spec_bands, "band_name", f"{mask_band}")
+                    mask_band_index = search_band_dict(
+                        model_input_data_spec_bands, "band_name", f"{mask_band}"
+                    )
                     if mask_band_index is not None:
                         mask_band_index = mask_band_index.get("index")
             else:
@@ -279,7 +305,9 @@ def mask_from_url(mask_url: str, xds: object, buffer_size_m: float = 100):
     ccgdf["geometry"] = ccgdf.buffer(buffer_size_m)
     ccgdf.to_crs(crs=original_crs, inplace=True)
 
-    shapes = ((geom, value) for geom, value in zip(ccgdf.geometry, [90] * len(ccgdf.geometry)))
+    shapes = (
+        (geom, value) for geom, value in zip(ccgdf.geometry, [90] * len(ccgdf.geometry))
+    )
 
     features.rasterize(shapes=shapes, fill=0, out=xds, transform=xds.rio.transform())
     return xds
@@ -306,11 +334,19 @@ def make_rgb(model_input_original_image: Union[str, list], inference_dict):
         nodata_value = xds.attrs.get("_FillValue", -9999)
         xds.rio.write_nodata(nodata_value, inplace=True)
 
-        model_input_data_spec_bands = inference_dict["model_input_data_spec"][i]["bands"]
+        model_input_data_spec_bands = inference_dict["model_input_data_spec"][i][
+            "bands"
+        ]
         logger.info(f"model_input_data_spec_bands: {model_input_data_spec_bands}")
-        red_band_index = int(search_band_dict(model_input_data_spec_bands, "RGB_band", "R").get("index"))
-        green_band_index = int(search_band_dict(model_input_data_spec_bands, "RGB_band", "G").get("index"))
-        blue_band_index = int(search_band_dict(model_input_data_spec_bands, "RGB_band", "B").get("index"))
+        red_band_index = int(
+            search_band_dict(model_input_data_spec_bands, "RGB_band", "R").get("index")
+        )
+        green_band_index = int(
+            search_band_dict(model_input_data_spec_bands, "RGB_band", "G").get("index")
+        )
+        blue_band_index = int(
+            search_band_dict(model_input_data_spec_bands, "RGB_band", "B").get("index")
+        )
         rgb_indexes = [red_band_index, green_band_index, blue_band_index]
 
         rgb_xds = xds[rgb_indexes, :, :]
@@ -366,7 +402,7 @@ def get_lulc_tile_for_input(input_image_path):
     lon_range = bbox.right - bbox.left
     lat_samples = max(3, min(10, int(lat_range / 0.5)))
     lon_samples = max(3, min(10, int(lon_range / 0.5)))
-    
+
     for lat in np.linspace(bbox.bottom, bbox.top, lat_samples):
         for lon in np.linspace(bbox.left, bbox.right, lon_samples):
             try:
@@ -376,10 +412,10 @@ def get_lulc_tile_for_input(input_image_path):
                 # Example: "37MBT12345678" -> "37M"
                 grid_zone = mgrs_code[:3]
                 grid_zones.add(grid_zone)
-            except Exception as e:
+            except Exception:
                 # Skip invalid coordinates (e.g., near poles)
                 continue
-    
+
     if not grid_zones:
         logger.error("Failed to calculate MGRS grid zones for input image")
         return None
@@ -389,18 +425,18 @@ def get_lulc_tile_for_input(input_image_path):
     # Example: 37N_20240101-20241231.tiff
     tile_paths = []
     missing_zones = []
-    
+
     # Get all available LULC files
     available_files = glob.glob(os.path.join(LULC_TILE_ROOT, "*.tif"))
     available_files.extend(glob.glob(os.path.join(LULC_TILE_ROOT, "*.tiff")))
-    
+
     for grid_zone in sorted(grid_zones):
         found = False
-        
+
         # Find file matching this grid zone
         for filepath in available_files:
             filename = os.path.basename(filepath)
-            
+
             # Check if filename starts with the grid zone
             # Handles: 37N_20240101-20241231.tiff, 37N.tif, etc.
             if filename.startswith(grid_zone):
@@ -408,17 +444,17 @@ def get_lulc_tile_for_input(input_image_path):
                 found = True
                 logger.info(f"Found LULC tile for zone {grid_zone}: {filename}")
                 break
-        
+
         if not found:
             missing_zones.append(grid_zone)
-    
+
     if missing_zones:
         logger.warning(
             f"Missing LULC tiles for {len(missing_zones)} grid zones: {missing_zones}. "
             f"Download from: "
             f"https://lulctimeseries.blob.core.windows.net/lulctimeseriesv003/lc2024/"
         )
-    
+
     if not tile_paths:
         logger.error(
             f"No LULC tiles found for calculated grid zones: {sorted(grid_zones)}. "
@@ -455,7 +491,11 @@ def get_lulc_tile_for_input(input_image_path):
 
 
 def search_band_dict(bands_list, search_key, search_value):
-    band_dict_match = (band_dict for band_dict in bands_list if band_dict.get(f"{search_key}") == f"{search_value}")
+    band_dict_match = (
+        band_dict
+        for band_dict in bands_list
+        if band_dict.get(f"{search_key}") == f"{search_value}"
+    )
     band_dict = next(band_dict_match, None)
     return band_dict
 
@@ -478,10 +518,21 @@ def zip_inference_data(task_dir):
     zip_location = f"{task_dir}/archive.zip"
 
     directory = Path(task_dir)
-    geoserver_supported_extensions = ("*.tif", "*.gpkg", "*.shp", "*.shx", "*.dbf", "*.cpg", "*.prj", "*.nc")
+    geoserver_supported_extensions = (
+        "*.tif",
+        "*.gpkg",
+        "*.shp",
+        "*.shx",
+        "*.dbf",
+        "*.cpg",
+        "*.prj",
+        "*.nc",
+    )
 
     with ZipFile(zip_location, mode="w") as archive:
-        for file_path in chain.from_iterable(directory.glob(ext) for ext in geoserver_supported_extensions):
+        for file_path in chain.from_iterable(
+            directory.glob(ext) for ext in geoserver_supported_extensions
+        ):
             archive.write(file_path, arcname=file_path.relative_to(directory))
 
 
@@ -528,12 +579,18 @@ def regularize_by_technique(
         threshold=0,
         unique_attribute_value=False,
     )
-    regularization_technique_to_run = REGULARIZATION_TECHNIQUES.get(technique, adaptive_regularization)
+    regularization_technique_to_run = REGULARIZATION_TECHNIQUES.get(
+        technique, adaptive_regularization
+    )
 
-    regularized_gdf = regularization_technique_to_run(building_polygons=rasterized_vector, **kwargs)
+    regularized_gdf = regularization_technique_to_run(
+        building_polygons=rasterized_vector, **kwargs
+    )
 
     if attribute_name not in regularized_gdf.columns:
-        logger.warning(f" Regularized polgon lacks the attribute name {attribute_name}. Adding it back")
+        logger.warning(
+            f" Regularized polgon lacks the attribute name {attribute_name}. Adding it back"
+        )
         regularized_gdf[attribute_name] = rasterized_vector[attribute_name]
 
     return regularized_gdf
@@ -553,7 +610,10 @@ def geojson_to_tiff(
 
     # Rasterize using the existing raster's shape and transform
     rasterized_data = features.rasterize(
-        ((geom, value) for geom, value in zip(geodataframe.geometry, geodataframe[attribute_name])),
+        (
+            (geom, value)
+            for geom, value in zip(geodataframe.geometry, geodataframe[attribute_name])
+        ),
         # [(geom, val) for geom, val in zip(vector.geometry, vector["id"])],
         out_shape=raster.shape,
         transform=raster.transform,
