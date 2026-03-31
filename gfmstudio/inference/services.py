@@ -123,7 +123,7 @@ async def invoke_tune_upload_handler(
         logger.exception(f"Network error during download:{e}")
         raise
 
-    if settings.ENVIRONMENT.lower() == "local":
+    if settings.ENVIRONMENT.lower() in ["local", "crc"]:
         tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
         if os.path.isdir(tune_dir) is False:
             os.mkdir(tune_dir)
@@ -169,7 +169,7 @@ async def invoke_tune_upload_handler(
                 config=Config(
                     signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION
                 ),
-                verify=(settings.ENVIRONMENT.lower() != "local"),
+                verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
             )
         except ValueError as exc:
             logger.error(f"pipeline_s3_client Misconfiguration: {str(exc)}")
