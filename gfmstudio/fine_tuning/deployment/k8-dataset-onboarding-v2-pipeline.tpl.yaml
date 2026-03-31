@@ -1,13 +1,20 @@
 # © Copyright IBM Corporation 2025
 # SPDX-License-Identifier: Apache-2.0
 
-
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: onboarding-v2-pipeline-dataset-id
+  labels:
+    app: dataset-onboarding
+    version: v2
 spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 3600
   template:
+    metadata:
+      labels:
+        app: dataset-onboarding
     spec:
       imagePullSecrets:
         - name: IMAGE_PULL_SECRET
@@ -15,10 +22,27 @@ spec:
       - name: onboarding-v2-pipeline-dataset-id
         image: DATASET_PIPELINE_IMAGE
         imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "2000m"
+          limits:
+            memory: "4Gi"
+            cpu: "4000m"
         volumeMounts:
           - name: mount-data
             mountPath: /data
+          - name: tmp-volume
+            mountPath: /tmp
         env:
+        - name: MAX_COG_WORKERS
+          value: "3"
+        - name: MAX_UPLOAD_WORKERS
+          value: "4"
+        - name: RASTER_CHUNK_SIZE
+          value: "512"
+        - name: PYTHONUNBUFFERED
+          value: "1"
         - name: LOGLEVEL
           valueFrom:
             secretKeyRef:
@@ -97,9 +121,24 @@ spec:
         - "DATA_BUCKET=$(BUCKET_NAME)"
         - "dataset_url=$(DATASET_URL)"
         - "df_api_route=$(DF_WEBHOOK_URL)"
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "ps aux | grep -v grep | grep python || exit 1"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
       volumes:
         - name: mount-data
           persistentVolumeClaim:
             claimName: DATA_PVC_NAME
+        - name: tmp-volume
+          emptyDir:
+            sizeLimit: 20Gi
       restartPolicy: Never
-  backoffLimit: 4
+      activeDeadlineSeconds: 7200
+
+# Made with Bob
