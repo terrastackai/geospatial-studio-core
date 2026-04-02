@@ -714,7 +714,7 @@ def main():
 
     onboarding_details = {}
 
-    working_path = "/data/" + payload["dataset_id"]
+    working_path = "/pipeline/data/" + payload["dataset_id"]
 
     dataset_bucket = os.getenv("DATA_BUCKET", "geoft-service-datasets")
 
@@ -895,9 +895,10 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         logger.error(
-            "An exception occurred when onboarding the dataset", stack_info=True
+            f"An exception occurred when onboarding the dataset: {str(e)}",
+            exc_info=True,
+            stack_info=True
         )
-        logger.error("Exception - " + str(e))
         error["message"] = str(e)
         onboarding_details = {}
         populate_onboarding_details(

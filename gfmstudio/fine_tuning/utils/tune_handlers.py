@@ -655,23 +655,6 @@ async def save_tune_config(
     HTTPException
         500 if COS upload fails
     """
-    # Upload to COS if not local environment
-    if settings.ENVIRONMENT.lower() not in ["local", "crc"]:
-        s3 = object_storage.object_storage_client()
-        try:
-            await asyncify(s3.put_object)(
-                Bucket=settings.TUNES_FILES_BUCKET,
-                Body=rendered_template,
-                Key=bucket_key,
-            )
-            logger.debug(
-                f"Config uploaded to COS: {settings.TUNES_FILES_BUCKET}/{bucket_key}"
-            )
-        except Exception as exc:
-            logger.exception("Failed to upload config to COS")
-            raise HTTPException(
-                status_code=500, detail="Failed to upload configuration to storage"
-            ) from exc
 
     # Save to local storage
     tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
