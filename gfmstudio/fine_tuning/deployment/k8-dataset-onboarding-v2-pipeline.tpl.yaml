@@ -9,6 +9,7 @@ metadata:
 spec:
   template:
     spec:
+      serviceAccountName: api-gateway-sa
       imagePullSecrets:
         - name: IMAGE_PULL_SECRET
       containers:
@@ -17,7 +18,7 @@ spec:
         imagePullPolicy: Always
         volumeMounts:
           - name: mount-data
-            mountPath: /data
+            mountPath: /pipeline/data
         env:
         - name: LOGLEVEL
           valueFrom:

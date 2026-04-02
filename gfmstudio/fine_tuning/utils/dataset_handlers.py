@@ -269,7 +269,7 @@ def obtain_job_log(pod_name: str, dataset_id: str) -> str:
     destination: str
         the filepath at which the job log is stored
     """
-    logs_dir = "deployment/logs"
+    logs_dir = "/app/deployment/logs"
     os.makedirs(logs_dir, exist_ok=True)
     log_path = f"{logs_dir}/{dataset_id}.log"
     try:

@@ -319,7 +319,15 @@ async def handle_dataset_factory_webhooks(
                 f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
             )
             k8s_delete_secret_command = f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
-            remove_job_deployment_file_command = f"rm {BASE_DIR}/deployment/jobs/onboarding-v2-pipeline-{dataset_id}.yaml"
+
+            # Validate BASE_DIR before using it in rm command
+            if not BASE_DIR or str(BASE_DIR).strip() == "":
+                logger.info(f"BASE_DIR is empty or invalid: '{BASE_DIR}'. Try using /app as BASE_DIR")
+                deployment_file_path = f"/app/deployment/jobs/onboarding-v2-pipeline-{dataset_id}.yaml"
+                remove_job_deployment_file_command = f"rm -f {deployment_file_path}"
+            else:
+                deployment_file_path = f"{BASE_DIR}/deployment/jobs/onboarding-v2-pipeline-{dataset_id}.yaml"
+                remove_job_deployment_file_command = f"rm -f {deployment_file_path}"
 
             try:
                 delete_job_output = subprocess.check_output(
