@@ -56,7 +56,7 @@ def add_imagemosaic_to_geoserver(geo, workspace, task_folder, layer_name, retrie
     logger.debug(f"Save to geoserver create coverage store for file: {retrieved_file_paths}")
 
     layer_folder = f"{task_folder}/{layer_name}"
-    os.mkdir(layer_folder)
+    os.makedirs(layer_folder, exist_ok=True)
     for f in retrieved_file_paths:
         shutil.copy(f, f"{layer_folder}/")
 
