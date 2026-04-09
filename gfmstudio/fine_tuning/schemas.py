@@ -14,7 +14,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from gfmstudio.common.schemas import ItemResponse, ListResponse
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning.core.schema import ModelBaseParams
-from gfmstudio.inference.v2.schemas import DataSource, GeoServerPush, SpatialDomain
+from gfmstudio.inference.v2.schemas import (
+    DataSource,
+    GenericProcessor,
+    GeoServerPush,
+    PostProcessing,
+    SpatialDomain,
+)
 
 
 class TuneOptionEnum(str, enum.Enum):
@@ -300,6 +306,8 @@ class TuneStatusOut(TuneOut):
     train_options: Optional[dict] = {}
     tune_template_id: Optional[uuid.UUID] = None
     model_parameters: Optional[Any] = {}
+    post_processing: Optional[PostProcessing] = None
+    generic_processor: Optional[GenericProcessor] = None
 
     @field_validator("progress", mode="before")
     def update_progress(cls, val):
