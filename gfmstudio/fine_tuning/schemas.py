@@ -14,7 +14,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from gfmstudio.common.schemas import ItemResponse, ListResponse
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning.core.schema import ModelBaseParams
-from gfmstudio.inference.v2.schemas import DataSource, GeoServerPush, PostProcessing, SpatialDomain, GenericProcessor
+from gfmstudio.inference.v2.schemas import (
+    DataSource,
+    GenericProcessor,
+    GeoServerPush,
+    PostProcessing,
+    SpatialDomain,
+)
 
 
 class TuneOptionEnum(str, enum.Enum):
