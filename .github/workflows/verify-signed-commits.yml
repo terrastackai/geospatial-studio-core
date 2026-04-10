@@ -37,7 +37,13 @@ jobs:
           fi
           
           # Get list of commits
-          COMMITS=$(git rev-list $BASE_SHA..$HEAD_SHA)
+          # Handle case where BASE_SHA doesn't exist (e.g., after force push)
+          if git rev-parse --verify "$BASE_SHA" >/dev/null 2>&1; then
+            COMMITS=$(git rev-list $BASE_SHA..$HEAD_SHA)
+          else
+            echo "Base commit $BASE_SHA not found (likely force push), checking HEAD commit only"
+            COMMITS="$HEAD_SHA"
+          fi
           
           if [ -z "$COMMITS" ]; then
             echo "No commits to verify"
