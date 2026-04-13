@@ -31,8 +31,7 @@ from rasterio import features
 from shapely.geometry import Polygon, box
 
 # LULC data location
-LULC_TILE_ROOT = os.environ.get("LULC_SHARED_DATA_ROOT", "/auxdata/lulc/lc2021/")
-LULC_TILE_SHAPEFILE = os.environ.get("LULC_TILE_SHAPEFILE", "/auxdata/lulc/tiles.shp")
+LULC_TILE_ROOT = os.environ.get("LULC_SHARED_DATA_ROOT", "/auxdata/lulc/")
 LAND_POLYGON_PATH = os.environ.get(
     "LAND_POLYGON_PATH", "/auxdata/general/land_polygons.shp"
 )
@@ -365,15 +364,6 @@ def make_rgb(model_input_original_image: Union[str, list], inference_dict):
 
     else:
         return _make_rgb_single_file(model_input_original_image)
-
-
-def get_tiles_list(bbox):
-    ldf = gpd.read_file(LULC_TILE_SHAPEFILE)
-    polygon = box(*bbox)
-    ldf = ldf.clip(polygon)
-    tiles_list = list(ldf["tile"].values)
-    return tiles_list
-
 
 def get_lulc_tile_for_input(input_image_path):
     """
