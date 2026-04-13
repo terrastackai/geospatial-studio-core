@@ -175,13 +175,13 @@ def grab_new_task(engine, process_id):
         task_search_sql = text(
             f"""UPDATE {inf_task_table} SET pipeline_steps = jsonb_set(jsonb_set(pipeline_steps, array[elem_index::text, 'status'], '"RUNNING"'::jsonb), array[elem_index::text, 'start_time'], '"{start_time}"'::jsonb)
         FROM (
-            select 
+            select
                 pos- 1 as elem_index, id as tid
             FROM {inf_task_table} t CROSS JOIN LATERAL jsonb_array_elements(t.pipeline_steps) AS p(j),
                 jsonb_array_elements(pipeline_steps) with ordinality arr(elem, pos)
             where
                 elem->>'process_id' = '{process_id}' AND p->>'process_id' = '{process_id}' AND p->>'status'='READY'
-            ORDER BY priority DESC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED) AS sub_arrange
+            ORDER BY priority ASC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED) AS sub_arrange
             WHERE id=tid RETURNING task_id, inference_id, inference_folder, status;"""
         )
 

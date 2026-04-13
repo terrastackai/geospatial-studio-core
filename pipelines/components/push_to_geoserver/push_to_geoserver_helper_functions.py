@@ -14,11 +14,35 @@ from geo.Geoserver import GeoserverException
 from jinja2 import Template as Jinja2Template
 from gfm_data_processing.common import logger
 from gfm_data_processing import raster_data_operations as rdo
+from urllib3.exceptions import NameResolutionError
+from requests.exceptions import ConnectionError, Timeout
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+import logging
+
+# Retry only transient network errors
+RETRYABLE_EXCEPTIONS = (
+    NameResolutionError,  # DNS resolution failed
+    ConnectionError,      # Connection refused/reset
+    Timeout,              # Request timeout
+)
+
+
+# Create a reusable retry decorator
+def retry_on_network_error(func):
+    """Decorator that retries function on transient network errors."""
+    return retry(
+        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True
+    )(func)
 
 
 ######################################################################################################
 ###  Add to geoserver
 ######################################################################################################
+@retry_on_network_error
 def add_imagemosaic_to_geoserver(geo, workspace, task_folder, layer_name, retrieved_file_paths):
     file_type = "imagemosaic"
     content_type = "application/zip"
@@ -79,6 +103,7 @@ def add_imagemosaic_to_geoserver(geo, workspace, task_folder, layer_name, retrie
             logger.debug(f"{tss}: published imagemosaic time dimension")
 
 
+@retry_on_network_error
 def add_netcdf_to_geoserver(geo, workspace, file_path, layer_name, coverage_name):
     """
     Save netcdf to geoserver, assuming store has one feature
@@ -131,7 +156,7 @@ def add_netcdf_to_geoserver(geo, workspace, file_path, layer_name, coverage_name
     css = geo.get_coveragestore(workspace=workspace, coveragestore_name=layer_name)
     return css
 
-
+@retry_on_network_error
 def add_vector_to_geoserver(geo, workspace, file_path, layer_name, store_format):
     """
     Save gpkg or shp to geoserver, assuming store has one feature
