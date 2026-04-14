@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     DATA_ADVISOR_PRE_DAYS: Optional[int] = Field(default=1)
     DATA_ADVISOR_POST_DAYS: Optional[int] = Field(default=1)
 
+    # Inference Area Validation
+    MAX_INFERENCE_AREA_SQ_KM: Optional[float] = Field(
+        default=None,
+        description="Maximum allowed inference area in square kilometers. "
+        "Example: 72546.0. Set to 0 or None to disable validation.",
+    )
+
     # API Key Encryption
     API_ENCRYPTION_KEY: str = Field(default=SENTINEL_SECRET_VALUE)
 
