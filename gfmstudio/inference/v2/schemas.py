@@ -1,13 +1,15 @@
 # © Copyright IBM Corporation 2025
 # SPDX-License-Identifier: Apache-2.0
 
-
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+
+from gfmstudio.config import get_settings
+from gfmstudio.inference.v2.area_validator import validate_inference_area
 
 from ...common.schemas import ItemResponse, ListResponse
 
@@ -86,6 +88,30 @@ class SpatialDomain(BaseModel):
             raise ValueError(
                 "At least one of 'bbox', 'polygons', 'tiles', or 'urls' must be provided."
             )
+        return model
+
+    @model_validator(mode="after")
+    def validate_area_limit(cls, model):
+        """Validate that the inference area doesn't exceed the configured maximum."""
+        settings = get_settings()
+        max_area = settings.MAX_INFERENCE_AREA_SQ_KM
+
+        # Skip validation if disabled or if only URLs/tiles are provided
+        if not max_area or max_area <= 0:
+            return model
+
+        if model.urls or model.tiles:
+            # Skip area validation for URL and tile-based inferences
+            return model
+
+        # Validate area for bbox and polygon-based inferences
+        is_valid, calculated_area, error_msg = validate_inference_area(
+            bboxes=model.bbox, polygons=model.polygons, max_area_sq_km=max_area
+        )
+
+        if not is_valid:
+            raise ValueError(error_msg)
+
         return model
 
 
