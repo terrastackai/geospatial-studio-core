@@ -32,14 +32,10 @@ class Settings(BaseSettings):
     EIS_API_KEY: Optional[str] = ""
 
     # Object storage / COS details
-    OBJECT_STORAGE_ENDPOINT: Optional[str] = Field(
-        description="COS endpoint", default=""
-    )
+    OBJECT_STORAGE_ENDPOINT: Optional[str] = Field(description="COS endpoint", default="")
     OBJECT_STORAGE_KEY_ID: str = Field(description="Key ID for COS authentication")
     OBJECT_STORAGE_SEC_KEY: str = Field(description="Secret Key for COS authentication")
-    OBJECT_STORAGE_REGION: Optional[str] = Field(
-        description="URL with the region", default=""
-    )
+    OBJECT_STORAGE_REGION: Optional[str] = Field(description="URL with the region", default="")
     OBJECT_STORAGE_SIGNATURE_VERSION: Optional[str] = Field(default="s3v4")
 
     TEMP_UPLOADS_BUCKET: Optional[str] = Field(
@@ -47,14 +43,10 @@ class Settings(BaseSettings):
         default="geospatial-studio-temporary-uploads",
     )
     # Add pipelines v2 COS credentials
-    PIPELINES_V2_COS_BUCKET: Optional[str] = Field(
-        default="test-geo-inference-pipelines"
-    )
+    PIPELINES_V2_COS_BUCKET: Optional[str] = Field(default="test-geo-inference-pipelines")
     PIPELINES_V2_INFERENCE_ROOT_FOLDER: Optional[str] = Field(default=None)
-    PIPELINES_V2_INTEGRATION_TYPE: Optional[str] = Field(default="database")
-    INFERENCE_LOGS_BASE_PATH: Optional[str] = Field(
-        default="/data"
-    )  # Options: database, kafka, api
+    PIPELINES_V2_INTEGRATION_TYPE: Optional[str] = Field(default="database")  # Options: database, kafka, api
+    INFERENCE_LOGS_BASE_PATH: Optional[str] = Field(default="/data")
 
     DEFAULT_SYSTEM_USER: Optional[str] = "system@ibm.com"
     AUTH_ENABLED: bool = Field(
@@ -77,12 +69,8 @@ class Settings(BaseSettings):
     INFERENCE_PIPELINE_BASE_URL: Optional[str] = Field(
         default="https://pipelines-orchestration-nasageospatial-uat.cash.sl.cloud9.ibm.com/v1"
     )
-    INFERENCE_PIPELINE_ID: Optional[str] = Field(
-        default="23a3e4e9-d81d-4694-a2b2-543581e63c12"
-    )
-    DEPLOY_FOR_INFERENCE_PIPELINE_ID: Optional[str] = Field(
-        default="ad249995-58ed-4d56-9ec4-41021f75ee23"
-    )
+    INFERENCE_PIPELINE_ID: Optional[str] = Field(default="23a3e4e9-d81d-4694-a2b2-543581e63c12")
+    DEPLOY_FOR_INFERENCE_PIPELINE_ID: Optional[str] = Field(default="ad249995-58ed-4d56-9ec4-41021f75ee23")
 
     DATA_ADVISOR_ENABLED: Optional[bool] = Field(default=False)
     DATA_ADVISOR_MAX_CLOUD_COVER: Optional[float] = Field(default=80)
@@ -100,7 +88,7 @@ class Settings(BaseSettings):
     API_ENCRYPTION_KEY: str = Field(default=SENTINEL_SECRET_VALUE)
 
     # Rate Limiting
-    RATELIMIT_ENABLED: Optional[bool] = False  # Turn rate limit on/off
+    RATELIMIT_ENABLED: Optional[bool] = True  # Turn rate limit on/off
     RATE_LIMIT_CONFIG: Optional[dict] = {}
     RATELIMIT_LIMIT: Optional[int] = Field(
         default=200,
@@ -133,9 +121,7 @@ class Settings(BaseSettings):
             "Task": "WGS-1135",
         },
     )
-    JIRA_API_KEY: Optional[str] = Field(
-        description="Jira API Key with write access", default=""
-    )
+    JIRA_API_KEY: Optional[str] = Field(description="Jira API Key with write access", default="")
     JIRA_API_URI: str = Field(
         description="Jira API URI",
         default="https://jsw.ibm.com/rest/api/2",
@@ -149,9 +135,7 @@ class Settings(BaseSettings):
     ####################
     # FINE TUNING
     ####################
-    FT_IMAGE_PULL_SECRETS: str = Field(
-        default="ris-private-registry", description="Image pull secret to pull images."
-    )
+    FT_IMAGE_PULL_SECRETS: str = Field(default="ris-private-registry", description="Image pull secret to pull images.")
     MMSEGMENTATION_GEO_IMAGE: str = Field(
         default="us.icr.io/gfmaas/mmsegmentation_geospatial:v0.1.0",
         description="The mmsegmentation docker image to run the fine tune process",
@@ -180,9 +164,7 @@ class Settings(BaseSettings):
         description="Path in the pod where the backbone models PVC is mounted",
         default="/terratorch/",
     )
-    FILES_PVC: Optional[str] = Field(
-        description="Name of the Persistent Volume ", default="gfm-ft-files-pvc"
-    )
+    FILES_PVC: Optional[str] = Field(description="Name of the Persistent Volume ", default="gfm-ft-files-pvc")
     NAMESPACE: str = Field(
         default="geoft",
         description="This is the namespace (or OCP project) where the helm upgrade is run",
@@ -276,18 +258,10 @@ class Settings(BaseSettings):
     DATA_PIPELINE_BASE_URL: Optional[str] = Field(
         default="https://geofm-workflow-orchestrator-internal-nasageospatial-dev.cash.sl.cloud9.ibm.com/v1"
     )
-    DATA_ONBOARD_PIPELINE_ID: Optional[str] = Field(
-        default="3148e9aa-ee1e-40ba-a9a7-8e783deac6b7"
-    )
-    DATA_ONBOARD_PIPELINE_V2_ID: Optional[str] = Field(
-        default="335d21ce-269e-47d5-91eb-65f315b5c728"
-    )
-    DATASET_PIPELINE_IMAGE: Optional[str] = Field(
-        default="us.icr.io/gfmaas/geostudio-curated-upload:latest"
-    )
-    model_config = ConfigDict(
-        extra="allow", case_sensitive=True, env_file=os.path.join(BASE_DIR, ".env")
-    )
+    DATA_ONBOARD_PIPELINE_ID: Optional[str] = Field(default="3148e9aa-ee1e-40ba-a9a7-8e783deac6b7")
+    DATA_ONBOARD_PIPELINE_V2_ID: Optional[str] = Field(default="335d21ce-269e-47d5-91eb-65f315b5c728")
+    DATASET_PIPELINE_IMAGE: Optional[str] = Field(default="us.icr.io/gfmaas/geostudio-curated-upload:latest")
+    model_config = ConfigDict(extra="allow", case_sensitive=True, env_file=os.path.join(BASE_DIR, ".env"))
 
     ####################
     # AMO
@@ -314,9 +288,7 @@ class Settings(BaseSettings):
         description="COS bucket where new model artifacts are stored",
         default="geodev-amo-input-bucket",
     )
-    AMO_INFERENCE_SHARED_PVC: Optional[str] = Field(
-        description="Inference Shared PVC", default="inference-shared-pvc"
-    )
+    AMO_INFERENCE_SHARED_PVC: Optional[str] = Field(description="Inference Shared PVC", default="inference-shared-pvc")
     GENERIC_PROCESSOR_BUCKET: Optional[str] = Field(
         description="COS bucket for generic processor scripts",
         default="geodev-generic-processor",
