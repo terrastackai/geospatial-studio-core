@@ -3,6 +3,7 @@
 
 
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -53,9 +54,33 @@ async def run_subprocess_cmds(command: list):
         return
 
 
+def get_k8s_server_url():
+    """Get the Kubernetes API server URL.
+    
+    First tries to read from the service account (when running inside a cluster),
+    then falls back to settings.
+    
+    Returns
+    -------
+    str
+        The Kubernetes API server URL
+    """
+    try:
+        k8s_host = os.getenv('KUBERNETES_SERVICE_HOST')
+        k8s_port = os.getenv('KUBERNETES_SERVICE_PORT', '443')
+        
+        if k8s_host:
+            server_url = f"https://{k8s_host}:{k8s_port}"
+            logging.debug(f"Detected Kubernetes server from environment: {server_url}")
+            return server_url
+    except Exception as e:
+        logging.debug(f"Could not detect K8s server from environment: {e}")
+
+    raise ValueError("Could not determine Kubernetes server URL.")
+
+
 async def ensure_logged_in(command=COMMAND):
-    """Function that ensures kubectl is able to communicate to Kubernetes control plane.
-    This function will create a ~/.kube/config by calling kubectl login.
+    """Function that ensures kubectl is able to communicate to Kubernetes/OpenShift control plane.
 
     Parameters
     ----------
@@ -64,23 +89,71 @@ async def ensure_logged_in(command=COMMAND):
         COMMAND="kubectl get job --namespace=NAMESPACE"
     """
     try:
-        logging.info("Checking login status with kubectl list...")
+        logging.debug("Checking login status with kubectl list...")
         args = shlex.split(command)
         output = await check_output(*args)
         # If this works, means that we're logged in
-        logging.info(f"kubectl reports we're logged in: {output}")
+        logging.debug(f"kubectl reports we're logged in: {output}")
         return
     except ProcessError:
-        logging.info("Logging into the cluster")
-        login_command = (
-            "bash -xc '"
-            "kubectl login --token=$SATOKEN "
-            "--server=$K8S_SERVER "
-            "--insecure-skip-tls-verify=true'"
-        )
-        await check_output(
-            *shlex.split(login_command),
-        )
+        logging.debug("Logging into the cluster")
+        
+        # Get server URL and token
+        try:
+            k8s_server = get_k8s_server_url()
+            sa_token = settings.SATOKEN
+        except ValueError as e:
+            logging.error(f"Failed to get cluster credentials: {e}")
+            raise
+        
+        # Check if we're using OpenShift (oc) or Kubernetes (kubectl)
+        # Try oc login first (for OpenShift)
+        try:
+            # Set cluster configuration
+            set_cluster_cmd = [
+                "kubectl",
+                "config",
+                "set-cluster",
+                "default-cluster",
+                f"--server={k8s_server}",
+                "--insecure-skip-tls-verify=true"
+            ]
+            await check_output(*set_cluster_cmd)
+            
+            # Set credentials
+            set_credentials_cmd = [
+                "kubectl",
+                "config",
+                "set-credentials",
+                "default-user",
+                f"--token={sa_token}"
+            ]
+            await check_output(*set_credentials_cmd)
+            
+            # Set context
+            set_context_cmd = [
+                "kubectl",
+                "config",
+                "set-context",
+                "default-context",
+                "--cluster=default-cluster",
+                "--user=default-user"
+            ]
+            await check_output(*set_context_cmd)
+            
+            # Use context
+            use_context_cmd = [
+                "kubectl",
+                "config",
+                "use-context",
+                "default-context"
+            ]
+            await check_output(*use_context_cmd)
+            
+            logging.info("Successfully configured kubectl for Kubernetes")
+        except ProcessError:
+            logging.error("Failed to configure kubectl for Kubernetes")
+            raise
 
 
 def get_current_namespace():
