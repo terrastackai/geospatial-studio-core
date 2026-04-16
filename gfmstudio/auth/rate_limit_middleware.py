@@ -217,5 +217,5 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         pipe.expire(redis_key, time_window)  # Set expiry
         results = pipe.execute()
         current_count = results[2]
-        logger.info(f"Rate limit check for {identifier}: {current_count}/{rate_limit}")
+        logger.debug(f"Rate limit check for {identifier}: {current_count}/{rate_limit}")
         return current_count <= rate_limit
