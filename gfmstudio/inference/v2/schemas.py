@@ -18,13 +18,9 @@ from ...common.schemas import ItemResponse, ListResponse
 # Model
 # ***************************************************
 class ModelOnboardingInputSchema(BaseModel):
-    fine_tuned_model_id: str = Field(description="", default=None, max_length=100)
-    model_configs_url: str = Field(
-        description="Presigned url model config file.", default=None
-    )
-    model_checkpoint_url: str = Field(
-        description="Presigned url to model checkpoint file.", default=None
-    )
+    fine_tuned_model_id: Optional[str] = Field(description="", default=None, max_length=100)
+    model_configs_url: Optional[str] = Field(description="Presigned url model config file.", default=None)
+    model_checkpoint_url: Optional[str] = Field(description="Presigned url to model checkpoint file.", default=None)
 
     class Config:
         from_attributes = True
@@ -47,9 +43,7 @@ class ModelUpdateInput(BaseModel):
     @classmethod
     def validate_display_name(cls, v):
         if not re.match(r"^[a-zA-Z0-9_-]+$", v):
-            raise ValueError(
-                "model display_name can only contain letters, underscores, and hyphens"
-            )
+            raise ValueError("model display_name can only contain letters, underscores, and hyphens")
         return v
 
 
@@ -81,18 +75,25 @@ class SpatialDomain(BaseModel):
     polygons: Optional[List] = Field(default_factory=list)
     tiles: Optional[List] = Field(default_factory=list)
     urls: Optional[List] = Field(default_factory=list)
+    skip_validation: Optional[bool] = Field(default=False, exclude=True)
 
     @model_validator(mode="after")
     def at_least_one_field_required(cls, model):
+        # Skip validation for GET responses
+        if model.skip_validation:
+            return model
+
         if not (model.bbox or model.polygons or model.tiles or model.urls):
-            raise ValueError(
-                "At least one of 'bbox', 'polygons', 'tiles', or 'urls' must be provided."
-            )
+            raise ValueError("At least one of 'bbox', 'polygons', 'tiles', or 'urls' must be provided.")
         return model
 
     @model_validator(mode="after")
     def validate_area_limit(cls, model):
         """Validate that the inference area doesn't exceed the configured maximum."""
+        # Skip validation for GET responses
+        if model.skip_validation:
+            return model
+
         settings = get_settings()
         max_area = settings.MAX_INFERENCE_AREA_SQ_KM
 
@@ -218,22 +219,15 @@ class InferenceCreateInput(InferenceConfig):
     @model_validator(mode="after")
     def check_model_required(cls, model):
         if not (model.model_id or model.model_display_name):
-            raise ValueError(
-                "At least one of 'model_id' or 'model_display_name' must be provided."
-            )
+            raise ValueError("At least one of 'model_id' or 'model_display_name' must be provided.")
         return model
 
 
 class InferenceGetResponse(ItemResponse, InferenceCreateInput):
-
     spatial_domain: SpatialDomain
     temporal_domain: List[str] = None
-    model_input_data_spec: Optional[List[Dict[str, Any]]] = Field(
-        default=None, exclude=True
-    )
-    data_connector_config: Optional[List[DataSource]] = Field(
-        default=None, exclude=True
-    )
+    model_input_data_spec: Optional[List[Dict[str, Any]]] = Field(default=None, exclude=True)
+    data_connector_config: Optional[List[DataSource]] = Field(default=None, exclude=True)
     geoserver_push: Optional[List[GeoServerPush]] = Field(default=None, exclude=True)
     pipeline_steps: Optional[List[Dict[str, Any]]] = Field(default=None, exclude=True)
     post_processing: Optional[PostProcessing] = Field(default=None, exclude=True)
@@ -250,14 +244,20 @@ class InferenceGetResponse(ItemResponse, InferenceCreateInput):
     @model_validator(mode="before")
     @classmethod
     def populate_inference_config(cls, values):
-
         if isinstance(values, dict) and values["inference_config"]:
-            values["spatial_domain"] = values["inference_config"]["spatial_domain"]
+            spatial_domain_data = values["inference_config"]["spatial_domain"]
+            # Mark spatial_domain to skip validation for GET responses
+            if isinstance(spatial_domain_data, dict):
+                spatial_domain_data["skip_validation"] = True
+            values["spatial_domain"] = spatial_domain_data
             values["temporal_domain"] = values["inference_config"]["temporal_domain"]
             values["model_display_name"] = values["model"].display_name
             values["fine_tuning_id"] = values["inference_config"]["fine_tuning_id"]
         else:
-            values.spatial_domain = values.inference_config["spatial_domain"]
+            spatial_domain_data = values.inference_config["spatial_domain"]
+            if isinstance(spatial_domain_data, dict):
+                spatial_domain_data["skip_validation"] = True
+            values.spatial_domain = spatial_domain_data
             values.temporal_domain = values.inference_config["temporal_domain"]
             values.model_display_name = values.model.display_name
             values.fine_tuning_id = values.inference_config.get("fine_tuning_id")
@@ -352,9 +352,7 @@ class DataAdvisorRequestSchema(BaseModel):
 # Notification
 # ***************************************************
 class NotificationCreate(BaseModel):
-    event_id: UUID = Field(
-        description="An identifier generated for every event when an inference job is started."
-    )
+    event_id: UUID = Field(description="An identifier generated for every event when an inference job is started.")
     detail_type: str = Field(
         description="Describes the nature of the event.",
         example="Inference:Task:Notifications",
@@ -367,9 +365,7 @@ class NotificationCreate(BaseModel):
         description="The event timestamp specified by the service generating the event.",
         example="2023-08-13T16:31:47Z",
     )
-    detail: Dict[Any, Any] = Field(
-        description="JSON object with information about the event."
-    )
+    detail: Dict[Any, Any] = Field(description="JSON object with information about the event.")
     inference_id: Optional[UUID] = None
 
 
@@ -379,9 +375,7 @@ class NotificationGetResponse(BaseModel):
     source: Optional[str] = None
     detail_type: Optional[str] = None
     timestamp: Optional[datetime] = None
-    event_id: UUID = Field(
-        description="An identifier generated for every event when an inference job is started."
-    )
+    event_id: UUID = Field(description="An identifier generated for every event when an inference job is started.")
 
     class Config:
         from_attributes = True

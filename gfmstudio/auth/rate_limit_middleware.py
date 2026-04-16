@@ -4,6 +4,7 @@
 
 import logging
 import time
+import uuid
 from typing import Optional, Tuple
 
 from fastapi import Request
@@ -25,7 +26,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app,
-        redis_client: Redis,
+        redis_client: Optional[Redis],
         rate_limit_config: dict,
         excluded_paths: Optional[list] = [
             "/",
@@ -41,8 +42,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ----------
         app : ASGIApp
             The FastAPI or Starlette application instance.
-        redis_client : Redis
+        redis_client : Redis, optional
             The Redis client used for storing and checking rate limits.
+            If None, will attempt to get from app.state.redis_client during requests.
         rate_limit_config : dict
             A dictionary containing rate limit configurations for users, groups,
             and defaults.
@@ -52,12 +54,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.redis = redis_client
         self.rate_limit_config = rate_limit_config
-        self.default_limit = (
-            rate_limit_config.get("default", {}).get("/", {}).get("limit")
-        )
-        self.default_window = (
-            rate_limit_config.get("default", {}).get("/", {}).get("window")
-        )
+        self.default_limit = rate_limit_config.get("default", {}).get("/", {}).get("limit")
+        self.default_window = rate_limit_config.get("default", {}).get("/", {}).get("window")
         self.excluded_paths = excluded_paths or []
 
     async def dispatch(self, request: Request, call_next):
@@ -81,6 +79,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         HTTPException
             Raised with status code 429 if the rate limit is exceeded.
         """
+        # Get Redis client from app.state if not set during init
+        if self.redis is None and hasattr(request.app.state, "redis_client"):
+            self.redis = request.app.state.redis_client
+
+        # Skip rate limiting if Redis is not available
+        if self.redis is None:
+            logger.warning("Redis client not available, skipping rate limiting")
+            return await call_next(request)
+
         # Skip rate limiting for excluded paths
         if request.url.path in self.excluded_paths:
             return await call_next(request)
@@ -94,13 +101,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         jwt_token = request.headers.get("authorization")
         auth_type = "api_key" if api_key else "jwt_token"
         try:
-            auth_details = (
-                await auth_handler(request, jwt_header=jwt_token, api_key=api_key)
-                or default_auth_details
-            )
+            auth_details = await auth_handler(request, jwt_header=jwt_token, api_key=api_key) or default_auth_details
         except Exception:
-            response = await call_next(request)
-            return response
+            # Authentication failed - use IP-based rate limiting for unauthenticated requests
+            client_ip = request.client.host if request.client else "unknown"
+            auth_details = [f"{client_ip}", None, []]
+            auth_type = "client_ip"
 
         endpoint = request.url.path
         identifier = f"{auth_type}:{auth_details[0]}:{endpoint}:{request.method}"
@@ -167,26 +173,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         tuple
             A tuple containing the rate limit and time window in seconds.
         """
-        if auth_details["type"] in ["user", "api_key", "jwt_token"]:
+        if auth_details["type"] in ["user", "api_key", "jwt_token", "client_ip"]:
             if auth_details["id"] in self.rate_limit_config:
                 config = self.rate_limit_config[auth_details["id"]]
             else:
                 config = self.rate_limit_config["default"]
 
-            limit = (
-                config.get(endpoint, {}).get(method, {}).get("limit")
-                or self.default_limit
-            )
-            window = (
-                config.get(endpoint, {}).get(method, {}).get("window")
-                or self.default_window
-            )
+            limit = config.get(endpoint, {}).get(method, {}).get("limit") or self.default_limit
+            window = config.get(endpoint, {}).get(method, {}).get("window") or self.default_window
             return limit, window
         return self.default_limit, self.default_window
 
-    async def is_request_allowed(
-        self, identifier: str, rate_limit: int, time_window: int
-    ) -> bool:
+    async def is_request_allowed(self, identifier: str, rate_limit: int, time_window: int) -> bool:
         """
         Checks whether the given identifier has exceeded the rate limit.
 
@@ -204,16 +202,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         bool
             True if the request is allowed, False if the rate limit is exceeded.
         """
-        current_time = int(time.time())
+        current_time = time.time()
         window_start = current_time - time_window
         redis_key = f"rate_limit:{identifier}"
 
-        pipe = self.redis.pipeline()
-        pipe.zremrangebyscore(redis_key, 0, window_start)
-        pipe.zcard(redis_key)
-        pipe.zadd(redis_key, {str(current_time): current_time})
-        pipe.expire(redis_key, time_window)
-        results = pipe.execute()
-        current_count = results[1]
+        # Create unique member for this request using timestamp + UUID
+        # Ensures multiple requests in the same millisecond are counted separately
+        unique_member = f"{current_time}:{uuid.uuid4().hex[:8]}"
 
-        return current_count < rate_limit
+        pipe = self.redis.pipeline()
+        pipe.zremrangebyscore(redis_key, 0, window_start)  # Remove old entries
+        pipe.zadd(redis_key, {unique_member: current_time})  # Add new request with unique ID
+        pipe.zcard(redis_key)
+        pipe.expire(redis_key, time_window)  # Set expiry
+        results = pipe.execute()
+        current_count = results[2]
+        logger.info(f"Rate limit check for {identifier}: {current_count}/{rate_limit}")
+        return current_count <= rate_limit
