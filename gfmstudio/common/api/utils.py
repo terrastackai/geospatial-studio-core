@@ -12,12 +12,39 @@ from gfmstudio.log import logger
 
 
 async def get_db() -> AsyncGenerator[Session, None]:
-    """Async database session dependency.
+    """Async database session dependency for FastAPI endpoints.
 
     Usage:
         @router.get("/endpoint")
-        async def endpoint(db: Session = Depends(get_db_async)):
+        async def endpoint(db: Session = Depends(get_db)):
             # Use db here
+    """
+    db = SessionLocal()
+    logger.debug("Current Connection Pool Number: %s", engine.pool.checkedout())
+    try:
+        yield db
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass  # Ignore rollback errors on dead connections
+        raise
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass  # Ignore close errors on dead connections
+
+
+def get_db_sync():
+    """Synchronous database session generator for Celery workers.
+
+    Usage:
+        db = next(get_db_sync())
+        try:
+            # Use db here
+        finally:
+            db.close()
     """
     db = SessionLocal()
     logger.debug("Current Connection Pool Number: %s", engine.pool.checkedout())
