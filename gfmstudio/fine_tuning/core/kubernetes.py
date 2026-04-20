@@ -421,24 +421,19 @@ async def deploy_tuning_job(
     return deployment_id, status
 
 
-@backoff.on_exception(
-    backoff.constant,
-    ValueError,
-    jitter=None,
-    max_tries=settings.JOB_MAX_RETRY_COUNT,
-    interval=settings.KJOB_MAX_WAIT_SECONDS,
-    raise_on_giveup=False,
-)
 async def monitor_k8_job_completion(ftune_id: str):
-    try:
-        k8s_job_status, _ = await check_k8s_job_status(ftune_id)
-    except Exception as exc:
-        if "not found" in str(exc):
-            return
-
-    logger.info(f"{ftune_id} Waiting for job completion: Job status: {k8s_job_status}")
-    if k8s_job_status not in ["Complete", "Failed"]:
-        raise ValueError(f"{ftune_id}: Wait for task in PENDING state...")
+    """Trigger Celery task to monitor Kubernetes job completion.
+    
+    This function schedules a Celery task that will monitor the job with
+    exponential backoff, releasing the worker between checks.
+    """
+    # Import here to avoid circular dependency
+    from gfmstudio.celery_worker import monitor_k8_job_completion_task
+    
+    # Schedule the monitoring task asynchronously
+    # This releases the current worker immediately
+    monitor_k8_job_completion_task.apply_async(args=[ftune_id])  # type: ignore[attr-defined]
+    logger.info(f"{ftune_id}: Scheduled monitoring task for job completion")
 
 
 async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
@@ -475,12 +470,13 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
     logger.info(f"kubectl run cmds result: {command} ---> {result}")
 
     if result and result[0] != "":
-        # If job is not In Progress
+        # Job has completion status (Complete or Failed)
         status = result[0].strip()
         logger.info(f"{kjob_id}: Status for job {status}")
         return status, kjob_id
 
     else:
+        # No conditions yet - job might be newly created or still running
         # Attempt retrieval Using labels:
         if retry_label_lookup is True:
             # Remove -job and -hpo suffix if present
@@ -502,9 +498,31 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
             if job_name:
                 result = await check_k8s_job_status(job_name, retry_label_lookup=False)
                 logger.info(f"kubectl retry result: {result}")
-                return result if result else (None, job_name)
-        logger.exception(f"{kjob_id}: Error in check_k8s_job_status: {result}")
-        return None, tune_id
+                # If still no status after retry, treat as Running
+                if result and result[0] is None:
+                    logger.info(f"{job_name}: Job exists but no status yet, treating as Running")
+                    return "Running", job_name
+                return result if result else ("Running", job_name)
+        
+        # Job exists but has no conditions - verify it exists and treat as Running
+        verify_cmd = [
+            "kubectl",
+            "get",
+            "job",
+            kjob_id,
+            "-o",
+            "name",
+        ]
+        verify_result = await run_subprocess_cmds(command=verify_cmd)
+        
+        if verify_result and verify_result[0]:
+            # Job exists but no status conditions yet - it's running or pending
+            logger.info(f"{kjob_id}: Job exists but no status conditions yet, treating as Running")
+            return "Running", kjob_id
+        else:
+            # Job doesn't exist at all
+            logger.warning(f"{kjob_id}: Job not found in cluster")
+            return None, tune_id
 
 
 async def delete_k8s_job_resources(tune_id: str):

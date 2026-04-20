@@ -57,6 +57,36 @@ def deploy_tuning_job_celery_task(**kwargs):
 
 
 @celery_app.task(
+    name="monitor_k8_job_completion_task",
+    queue=FT_SERVICE_NAME,
+    bind=True,  # Bind to get access to self for retry
+    max_retries=100,  # Allow many retries
+    default_retry_delay=30,  # Start with 30 seconds
+)
+def monitor_k8_job_completion_task(self, ftune_id: str):
+    """Celery task to monitor Kubernetes job completion with automatic retry."""
+    from gfmstudio.fine_tuning.core.kubernetes import check_k8s_job_status
+    
+    try:
+        k8s_job_status, _ = asyncio.run(check_k8s_job_status(ftune_id))
+    except Exception as exc:
+        if "not found" in str(exc):
+            # Job not found, consider it done
+            return
+        # Unexpected error, retry with exponential backoff
+        raise self.retry(exc=exc, countdown=min(2 ** self.request.retries * 30, 7200))
+    
+    if k8s_job_status in ["Complete", "Failed"]:
+        # Job is done
+        return k8s_job_status
+    
+    # Job still running, retry with exponential backoff
+    # countdown: 30s, 60s, 120s, 240s, 480s, 960s, 1920s, 3840s, 7200s (max)
+    countdown = min(2 ** self.request.retries * 30, 7200)
+    raise self.retry(countdown=countdown)
+
+
+@celery_app.task(
     name="invoke_hpo_fine_tuning_task",
     queue=FT_SERVICE_NAME,
 )
