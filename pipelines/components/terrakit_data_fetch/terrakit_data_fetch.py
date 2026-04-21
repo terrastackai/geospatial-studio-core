@@ -26,6 +26,7 @@ from terrakit.download.transformations.impute_nans_xarray import impute_nans_xar
 from gfm_data_processing.metrics import MetricManager
 from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
 from gfm_data_processing.exceptions import GfmDataProcessingException
+from terrakit_cache import TerrakitPVCacheManager
 
 # Uncomment next 2 lines for local testing
 # import dotenv
@@ -43,6 +44,14 @@ task_id = os.environ.get("task_id", f"{inference_id}-task_0")
 process_id = os.getenv("process_id", "terrakit-data-fetch")
 
 metric_manager = MetricManager(component_name=process_id)
+
+# Initialize cache manager using existing /data mount with /cache subfolder
+cache_manager = TerrakitPVCacheManager(
+    cache_dir=os.getenv("TERRAKIT_CACHE_DIR", "/data/cache"),
+    cache_ttl_days=int(os.getenv("TERRAKIT_CACHE_TTL_DAYS", "30")),
+    max_cache_size_gb=float(os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB")) if os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB") else None,
+    enabled=os.getenv("TERRAKIT_CACHE_ENABLED", "true").lower() == "true"
+)
 
 
 def to_decibels(linear):
@@ -155,10 +164,46 @@ def terrakit_data_fetch():
                 output_file_date = data_date
 
             save_filepath = f"{task_folder}/{task_id}_{modality_tag}_{output_file_date}{file_suffix}.tif"
-            original_input_images += [save_filepath]
-
+            imputed_file_path = f"{task_folder}/{task_id}_{modality_tag}_{output_file_date}_imputed{file_suffix}.tif"
+            
             band_names = list(band_dict.get("band_name") for band_dict in model_input_data_spec["bands"])
 
+            # Generate cache key
+            cache_key = cache_manager.get_cache_key(
+                bbox=bbox,
+                date=data_date,
+                collection_name=collection_name,
+                band_names=band_names,
+                maxcc=maxcc,
+                modality_tag=modality_tag,
+                transform=model_input_data_spec.get("transform")
+            )
+            
+            # Check cache first (in /data/cache)
+            cached_data = cache_manager.get_cached_files(cache_key)
+            
+            if cached_data:
+                # Cache hit - copy from /data/cache to task folder
+                logger.info(f"🎯 Using cached data for {modality_tag} on {data_date}")
+                
+                original_pv_path = cached_data["original_pv_path"]
+                imputed_pv_path = cached_data["imputed_pv_path"]
+                
+                # Copy (or hardlink) from cache to task folder
+                success_original = cache_manager.copy_cached_file(original_pv_path, save_filepath)
+                success_imputed = cache_manager.copy_cached_file(imputed_pv_path, imputed_file_path)
+                
+                if success_original and success_imputed:
+                    original_input_images += [save_filepath]
+                    imputed_input_images += [imputed_file_path]
+                    logger.info(f"✅ Successfully retrieved cached files")
+                    continue  # Skip to next modality
+                else:
+                    logger.warning(f"⚠️ Failed to copy cached files, fetching from Terrakit...")
+            
+            # Cache miss or copy failed - fetch from Terrakit
+            logger.info(f"🌍 Fetching data from Terrakit for {modality_tag} on {data_date}")
+            
             # Use tenacity for automatic retry on network errors
             da = fetch_data_with_retry(
                 dc=dc,
@@ -188,10 +233,32 @@ def terrakit_data_fetch():
             dai = scale_data_xarray(da, model_input_data_spec_scaling_factors)
 
             # Imputing nans if any are found in data
-            imputed_file_path = f"{task_folder}/{task_id}_{modality_tag}_{output_file_date}_imputed{file_suffix}.tif"
             dai = impute_nans_xarray(dai, nodata_value=nodata_value)
             save_data_array_to_file(dai, imputed_file_path, imputed=True)
+            
+            original_input_images += [save_filepath]
             imputed_input_images += [imputed_file_path]
+            
+            # Cache the files to /data/cache
+            cache_metadata = {
+                "date": data_date,
+                "bbox": bbox,
+                "collection": collection_name,
+                "bands": band_names,
+                "maxcc": maxcc,
+                "modality": modality_tag,
+                "nodata_value": float(nodata_value),
+                "transform": model_input_data_spec.get("transform"),
+                "inference_id": inference_id,
+                "task_id": task_id
+            }
+            
+            cache_manager.cache_files(
+                cache_key=cache_key,
+                original_file_path=save_filepath,
+                imputed_file_path=imputed_file_path,
+                metadata=cache_metadata
+            )
 
         ######################################################################################################
         ###  (optional) if you want to pass on information to later stages of the pipelines,
