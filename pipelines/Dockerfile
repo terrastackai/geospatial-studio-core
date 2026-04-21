@@ -62,6 +62,8 @@ RUN mkdir /pipeline
 COPY ./general_libraries/gfm_logger /pipeline/gfm_logger
 COPY ./general_libraries/gfm_data_processing /pipeline/gfm_data_processing
 COPY ./general_libraries/orchestrate_wrapper /pipeline/
+COPY ./general_libraries/terrakit_cache /pipeline/terrakit_cache
+
 
 ########## Adding specific processor scripts
 # inference planner
