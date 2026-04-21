@@ -416,23 +416,33 @@ async def deploy_tuning_job(
     logger.info("Deployment initiated and script executed successfully")
     if settings.CELERY_TASKS_ENABLED and status == "In_progress":
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
-        await monitor_k8_job_completion(ftune_id)
+        # Extract monitor_task from kwargs if provided
+        monitor_task = kwargs.get('_monitor_task')
+        await monitor_k8_job_completion(ftune_id, monitor_task=monitor_task)
 
     return deployment_id, status
 
 
-async def monitor_k8_job_completion(ftune_id: str):
+async def monitor_k8_job_completion(ftune_id: str, monitor_task=None):
     """Trigger Celery task to monitor Kubernetes job completion.
     
     This function schedules a Celery task that will monitor the job with
     exponential backoff, releasing the worker between checks.
+
+    Parameters
+    ----------
+    ftune_id : str
+        The fine-tuning job ID to monitor
+    monitor_task : celery.Task, optional
+        The Celery task to use for monitoring. If None, logs a warning.
     """
-    # Import here to avoid circular dependency
-    from gfmstudio.celery_worker import monitor_k8_job_completion_task
+    if monitor_task is None:
+        logger.warning(f"{ftune_id}: No monitoring task provided, job will not be monitored")
+        return
     
     # Schedule the monitoring task asynchronously
     # This releases the current worker immediately
-    monitor_k8_job_completion_task.apply_async(args=[ftune_id])  # type: ignore[attr-defined]
+    monitor_task.apply_async(args=[ftune_id])  # type: ignore[attr-defined]
     logger.info(f"{ftune_id}: Scheduled monitoring task for job completion")
 
 

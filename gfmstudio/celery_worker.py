@@ -11,6 +11,7 @@ from gfmstudio.amo.services import invoke_deploy_models_with_caikit
 from gfmstudio.amo.utils import invoke_model_offboarding_handler
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning.core.kubernetes import (
+    check_k8s_job_status,
     deploy_hpo_tuning_job,
     deploy_tuning_job,
 )
@@ -53,6 +54,8 @@ celery_app.conf.task_default_routing_key = INF_SERVICE_NAME
     queue=FT_SERVICE_NAME,
 )
 def deploy_tuning_job_celery_task(**kwargs):
+    # Inject the monitoring task into kwargs to avoid circular import
+    kwargs['_monitor_task'] = monitor_k8_job_completion_task
     return asyncio.run(deploy_tuning_job(**kwargs))
 
 
@@ -60,14 +63,14 @@ def deploy_tuning_job_celery_task(**kwargs):
     name="monitor_k8_job_completion_task",
     queue=FT_SERVICE_NAME,
     bind=True,  # Bind to get access to self for retry
-    max_retries=100,  # Allow many retries
+    max_retries=30,  # Allow many retries
     default_retry_delay=30,  # Start with 30 seconds
 )
 def monitor_k8_job_completion_task(self, ftune_id: str):
     """Celery task to monitor Kubernetes job completion with automatic retry."""
-    from gfmstudio.fine_tuning.core.kubernetes import check_k8s_job_status
-    from gfmstudio.log import logger
-    
+    # Get max wait time from settings, fallback to 7200 seconds (2 hours) if not set
+    max_wait = settings.KJOB_MAX_WAIT_SECONDS or 7200
+
     try:
         k8s_job_status, _ = asyncio.run(check_k8s_job_status(ftune_id))
     except Exception as exc:
@@ -77,7 +80,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
             return "Completed"
         # Unexpected error, retry with exponential backoff
         logger.warning(f"{ftune_id}: Error checking job status, will retry: {exc}")
-        raise self.retry(exc=exc, countdown=min(2 ** self.request.retries * 30, 7200))
+        raise self.retry(exc=exc, countdown=min(2 ** self.request.retries * 30, max_wait))
     
     # Handle None status (job not found after retries)
     if k8s_job_status is None:
@@ -91,8 +94,8 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
         return k8s_job_status
     
     # Job still running, retry with exponential backoff
-    # countdown: 30s, 60s, 120s, 240s, 480s, 960s, 1920s, 3840s, 7200s (max)
-    countdown = min(2 ** self.request.retries * 30, 7200)
+    # countdown: 30s, 60s, 120s, 240s, 480s, 960s (max with default 600s setting)
+    countdown = min(2 ** self.request.retries * 30, max_wait)
     logger.info(f"{ftune_id}: Job status={k8s_job_status}, will check again in {countdown}s")
     raise self.retry(countdown=countdown)
 
