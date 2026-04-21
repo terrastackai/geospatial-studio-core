@@ -47,21 +47,10 @@ Add these environment variables to your `values.yaml`:
 - name: TERRAKIT_CACHE_DIR
   value: "/data/cache"  # Uses existing shared PVC
 - name: TERRAKIT_CACHE_TTL_DAYS
-  value: "30"
+  value: "30" # Optional
 - name: TERRAKIT_CACHE_MAX_SIZE_GB
   value: "400"  # Optional size limit
 ```
-
-See `cache_config_example.yaml` for complete configuration example.
-
-### Benefits
-
-- ✅ **10-30x faster** for repeated queries
-- ✅ **Reduced API costs** (fewer Terrakit calls)
-- ✅ **Better reliability** (cached data always available)
-- ✅ **Shared across pods** (all processors can access cache)
-- ✅ **Automatic cleanup** (size-based eviction)
-- ✅ **Zero infrastructure changes** (uses existing PVC)
 
 ### Management
 
@@ -75,8 +64,6 @@ kubectl exec -it <pod-name> -- rm -rf /data/cache/*
 # Disable cache temporarily
 kubectl set env deployment/terrakit-data-fetch TERRAKIT_CACHE_ENABLED=false
 ```
-
-For detailed documentation, see `../../general_libraries/terrakit_cache/README.md`
 
 ## Deploy the process component
 To deploy the component to OpenShift you will use the deployment script in the folder.  In the deployment script you will need to:
