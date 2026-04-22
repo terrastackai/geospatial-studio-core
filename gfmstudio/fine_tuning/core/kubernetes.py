@@ -54,6 +54,30 @@ async def run_subprocess_cmds(command: list):
         return
 
 
+def get_sa_token():
+    """Read service account token from standard Kubernetes mount path.
+
+    When running inside a Kubernetes pod, the service account token is automatically
+    mounted at /var/run/secrets/kubernetes.io/serviceaccount/token.
+
+    Returns
+    -------
+    str
+        The service account token
+
+    Raises
+    ------
+    ValueError
+        If the token file is not found or cannot be read
+    """
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    try:
+        with open(token_path, 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        raise ValueError(f"Service account token not found at {token_path}")
+
+
 def get_k8s_server_url():
     """Get the Kubernetes API server URL.
     
@@ -101,7 +125,7 @@ async def ensure_logged_in(command=COMMAND):
         # Get server URL and token
         try:
             k8s_server = get_k8s_server_url()
-            sa_token = settings.SATOKEN
+            sa_token = get_sa_token()
         except ValueError as e:
             logging.error(f"Failed to get cluster credentials: {e}")
             raise
@@ -388,7 +412,11 @@ async def deploy_tuning_job(
                 namespace = settings.NAMESPACE
 
         if not ocp_token:
-            ocp_token = settings.SATOKEN
+            try:
+                ocp_token = get_sa_token()
+            except ValueError as e:
+                logging.error(f"Failed to get service account token: {e}")
+                raise
 
         context = {
             "deployment_name": deployment_id,
