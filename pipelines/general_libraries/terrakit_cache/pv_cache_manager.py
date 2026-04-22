@@ -14,9 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import redis
-from gfm_logger import get_logger
-
-logger = get_logger(__name__)
+from gfm_data_processing.common import logger
 
 REDIS_URL = "redis://localhost:6379/0"
 
