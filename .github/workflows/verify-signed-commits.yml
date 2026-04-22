@@ -37,12 +37,24 @@ jobs:
           fi
           
           # Get list of commits
-          # Handle case where BASE_SHA doesn't exist (e.g., after force push)
-          if git rev-parse --verify "$BASE_SHA" >/dev/null 2>&1; then
-            COMMITS=$(git rev-list $BASE_SHA..$HEAD_SHA)
+          # Always check if BASE_SHA exists first, regardless of its value
+          if [ "$BASE_SHA" == "0000000000000000000000000000000000000000" ] || ! git rev-parse --verify "$BASE_SHA" >/dev/null 2>&1; then
+            echo "Base commit $BASE_SHA not available (new branch or not fetched)"
+            # For new branches, get all commits not in main/master
+            if git rev-parse --verify origin/main >/dev/null 2>&1; then
+              echo "Checking all commits from origin/main to HEAD"
+              COMMITS=$(git rev-list origin/main..$HEAD_SHA 2>/dev/null || echo "$HEAD_SHA")
+            elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+              echo "Checking all commits from origin/master to HEAD"
+              COMMITS=$(git rev-list origin/master..$HEAD_SHA 2>/dev/null || echo "$HEAD_SHA")
+            else
+              # Fallback: check only HEAD if no main/master branch exists
+              echo "No main/master branch found, checking HEAD commit only"
+              COMMITS="$HEAD_SHA"
+            fi
           else
-            echo "Base commit $BASE_SHA not found (likely force push), checking HEAD commit only"
-            COMMITS="$HEAD_SHA"
+            # Normal case: BASE_SHA exists, get commits in range
+            COMMITS=$(git rev-list $BASE_SHA..$HEAD_SHA 2>/dev/null || echo "$HEAD_SHA")
           fi
           
           if [ -z "$COMMITS" ]; then
