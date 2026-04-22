@@ -16,7 +16,7 @@ from typing import Dict, List, Optional
 import redis
 from gfm_data_processing.common import logger
 
-REDIS_URL = "redis://localhost:6379/0"
+REDIS_URL = os.getenv("REDIS_URL", "")
 
 
 def get_redis_client(redis_url: str = REDIS_URL):
