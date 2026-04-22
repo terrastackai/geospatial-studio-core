@@ -317,8 +317,9 @@ async def deploy_hpo_tuning_job(
 
     logger.info("Deployment initiated and script executed successfully")
     if settings.CELERY_TASKS_ENABLED and status == "In_progress":
+        monitor_task = kwargs.get("_monitor_task")
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
-        await monitor_k8_job_completion(f"{deployment_id}-hpo")
+        await monitor_k8_job_completion(f"{deployment_id}-hpo",monitor_task=monitor_task)
 
     return deployment_id, status
 
