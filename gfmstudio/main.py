@@ -18,6 +18,7 @@ from gfmstudio.auth.rate_limit_middleware import RateLimitMiddleware
 from gfmstudio.config import settings
 from gfmstudio.cos_client import init_cos_client
 from gfmstudio.fine_tuning import api as geoft_apis
+from gfmstudio.groups.api import router as groups_router
 from gfmstudio.inference.v2 import api as inference_apiv2
 from gfmstudio.jira import jira_apis
 from gfmstudio.log import logger
@@ -170,6 +171,7 @@ async def docs_redirect():
 # api_router.include_router(api_events.events_router)
 
 app.include_router(auth_routes.router, prefix="/v2")
+app.include_router(groups_router, prefix="/v2")
 app.include_router(inference_apiv2.router, prefix="/v2")
 app.include_router(geoft_apis.app, prefix="/v2")
 app.include_router(amo_apis.app, prefix="/v2")
