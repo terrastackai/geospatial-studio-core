@@ -12,6 +12,7 @@ The TerraKit process will query data from a range of different data connectors
 import os
 import json
 import numpy as np
+import logging
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -60,7 +61,7 @@ def s1grd_to_decibels(da, modality_tag):
     stop=stop_after_attempt(3),
     wait=wait_fixed(5),
     retry=retry_if_exception_type((RuntimeError, ConnectionError, OSError)),
-    before_sleep=before_sleep_log(logger, "WARNING"),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
 def fetch_data_with_retry(dc, collection_name, data_date, bbox, maxcc, band_names, save_filepath, task_folder):

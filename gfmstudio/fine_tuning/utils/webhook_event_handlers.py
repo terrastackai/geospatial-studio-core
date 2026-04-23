@@ -49,9 +49,7 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
     while ("complete" not in k8s_job_status) and ("failed" not in k8s_job_status):
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
-            logger.error(
-                f"{tune_id} Job status check timeout after {max_wait_seconds}s"
-            )
+            logger.error(f"{tune_id} Job status check timeout after {max_wait_seconds}s")
             break
 
         await asyncio.sleep(30)
@@ -92,9 +90,7 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
     while ("complete" not in k8s_job_status) and ("failed" not in k8s_job_status):
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
-            logger.error(
-                f"{tune_id} Job status check timeout after {max_wait_seconds}s"
-            )
+            logger.error(f"{tune_id} Job status check timeout after {max_wait_seconds}s")
             break
 
         await asyncio.sleep(30)
@@ -141,18 +137,14 @@ async def upload_logs_cos(errored_logs_str: str, full_s3_log_file_path: str):
             Body=errored_logs_str,
             Key=full_s3_log_file_path,
         )
-        logger.info(
-            f"Log file successfully uploaded to s3://{settings.TUNES_FILES_BUCKET}/{full_s3_log_file_path}"
-        )
+        logger.info(f"Log file successfully uploaded to s3://{settings.TUNES_FILES_BUCKET}/{full_s3_log_file_path}")
     except Exception:
         detail = "Could not put pod logs to COS bucket."
         logger.exception(detail)
         raise HTTPException(status_code=500, detail=detail) from None
 
 
-async def handle_fine_tuning_webhooks(
-    event: Union[NotificationCreate, dict], user: str, db: Session = None
-):
+async def handle_fine_tuning_webhooks(event: Union[NotificationCreate, dict], user: str, db: Session = None):
     """Handle fine tuning service webhook events.
 
     For Tuning tasks, if status is;
@@ -175,7 +167,11 @@ async def handle_fine_tuning_webhooks(
         Created notification id
 
     """
-    session = db or next(utils.get_db())
+    if db is None:
+        db_gen = utils.get_db()
+        session = await anext(db_gen)
+    else:
+        session = db
     event = NotificationCreate(**event) if isinstance(event, dict) else event
     tune_id = str(event.detail["tune_id"])
     notification_id = None
@@ -198,9 +194,7 @@ async def handle_fine_tuning_webhooks(
         elif event.detail["status"] == "Finished":
             logger.debug(f"{tune_id}: Tuning Task finished successfully")
         elif event.detail["status"] == "Error":
-            logger.debug(
-                f"{tune_id}: Tuning Task Errored and resources already deleted."
-            )
+            logger.debug(f"{tune_id}: Tuning Task Errored and resources already deleted.")
         await free_k8s_resources(tune_id)
 
     try:
@@ -227,9 +221,7 @@ async def handle_fine_tuning_webhooks(
     return notification_id
 
 
-async def handle_dataset_factory_webhooks(
-    event: Union[NotificationCreate, dict], user: str, db: Session = None
-):
+async def handle_dataset_factory_webhooks(event: Union[NotificationCreate, dict], user: str, db: Session = None):
     """Handle dataset factory service webhook events.
 
     For Dataset Factory tasks, if status is;
@@ -252,7 +244,11 @@ async def handle_dataset_factory_webhooks(
         Id of the dataset that's updated
 
     """
-    session = db or next(utils.get_db())
+    if db is None:
+        db_gen = utils.get_db()
+        session = await anext(db_gen)
+    else:
+        session = db
     event = NotificationCreate(**event) if isinstance(event, dict) else event
 
     dataset_id = str(event.detail["dataset_id"])
@@ -270,9 +266,7 @@ async def handle_dataset_factory_webhooks(
     user = dataset.created_by or user
     item = {
         "status": event.detail["status"],
-        "error": transform_error_message(
-            event.detail["error_code"], event.detail["error_message"]
-        ),
+        "error": transform_error_message(event.detail["error_code"], event.detail["error_message"]),
         "logs": cos_log_path,
     }
     try:
@@ -315,9 +309,7 @@ async def handle_dataset_factory_webhooks(
 
         # Job cleanup; when status is Succeeded or Failed
         if event.detail["status"] != "Onboarding":
-            k8s_delete_job_command = (
-                f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
-            )
+            k8s_delete_job_command = f"kubectl delete job onboarding-v2-pipeline-{dataset_id}"
             k8s_delete_secret_command = f"kubectl delete secret dataset-onboarding-v2-pipeline-params-{dataset_id}"
 
             # Validate BASE_DIR before using it in rm command
@@ -330,43 +322,31 @@ async def handle_dataset_factory_webhooks(
                 remove_job_deployment_file_command = f"rm -f {deployment_file_path}"
 
             try:
-                delete_job_output = subprocess.check_output(
-                    k8s_delete_job_command, shell=True
-                )
+                delete_job_output = subprocess.check_output(k8s_delete_job_command, shell=True)
                 logger.info(delete_job_output)
             except subprocess.CalledProcessError as exc:
                 error_message = str(exc.output)
                 logger.error("Unable to remove the job.  Error - " + error_message)
 
             try:
-                delete_secret_output = subprocess.check_output(
-                    k8s_delete_secret_command, shell=True
-                )
+                delete_secret_output = subprocess.check_output(k8s_delete_secret_command, shell=True)
                 logger.info(delete_secret_output)
             except subprocess.CalledProcessError as exc:
                 error_message = str(exc.output)
-                logger.error(
-                    "Unable to remove secrets from the job. Error - " + error_message
-                )
+                logger.error("Unable to remove secrets from the job. Error - " + error_message)
 
             try:
-                delete_deployment_file_output = subprocess.check_output(
-                    remove_job_deployment_file_command, shell=True
-                )
+                delete_deployment_file_output = subprocess.check_output(remove_job_deployment_file_command, shell=True)
                 logger.info(delete_deployment_file_output)
             except subprocess.CalledProcessError as exc:
                 error_message = str(exc.output)
-                logger.error(
-                    "Unable to remove deployment file, Error - " + error_message
-                )
+                logger.error("Unable to remove deployment file, Error - " + error_message)
 
     except Exception:
         logger.exception("Dataset status was not updated.")
         raise HTTPException(
             status_code=500,
-            detail={
-                "message": f"Internal server error occurred. Dataset-{dataset_id} not updated."
-            },
+            detail={"message": f"Internal server error occurred. Dataset-{dataset_id} not updated."},
         )
 
     logger.info(f"Dataset status and details has been updated for {dataset_id}")

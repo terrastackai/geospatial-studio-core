@@ -6,7 +6,7 @@
 name = "geostudio-core"
 version = "2.0.0"
 description = "GEOStudio (Geospatial Exploration and Orchestration Studio) — an open-source toolkit for building, analyzing, and orchestrating geospatial foundation model workflows."
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 license = { file = "LICENSE" }
 authors = [
   { email = "geostudio@ibm.com"},
@@ -85,6 +85,7 @@ dependencies = [
     "typer>=0.20.0",
     "urllib3>=2.5.0",
     "uvicorn[standard]>=0.35.0",
+    "shapely (>=2.1.2,<3.0.0)",
 ]
 
 [project.scripts]
