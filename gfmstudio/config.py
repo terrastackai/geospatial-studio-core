@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     API_ENCRYPTION_KEY: str = Field(default=SENTINEL_SECRET_VALUE)
 
     # Rate Limiting
-    RATELIMIT_ENABLED: Optional[bool] = False  # Turn rate limit on/off
+    RATELIMIT_ENABLED: Optional[bool] = True  # Turn rate limit on/off
     RATE_LIMIT_CONFIG: Optional[dict] = {}
     RATELIMIT_LIMIT: Optional[int] = Field(
         default=200,

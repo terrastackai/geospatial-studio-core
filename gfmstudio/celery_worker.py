@@ -105,6 +105,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
     queue=FT_SERVICE_NAME,
 )
 def deploy_hpo_tuning_celery_task(**kwargs):
+    kwargs['_monitor_task'] = monitor_k8_job_completion_task
     return asyncio.run(deploy_hpo_tuning_job(**kwargs))
 
 
