@@ -29,8 +29,8 @@ def upgrade() -> None:
         "SELECT 1 FROM pg_type WHERE typname = 'group_role'"
     )).fetchone()
     if not result:
-        group_role_enum = postgresql.ENUM("owner", "member", name="group_role")
-        group_role_enum.create(conn)
+        group_role_enum = postgresql.ENUM("owner", "member", name="group_role", create_type=False)
+        group_role_enum.create(conn, checkfirst=True)
     
     # Check and create artifact_type_enum
     result = conn.execute(sa.text(
@@ -45,8 +45,9 @@ def upgrade() -> None:
             "task_template",
             "inference_run",
             name="artifact_type_enum",
+            create_type=False,
         )
-        artifact_type_enum.create(conn)
+        artifact_type_enum.create(conn, checkfirst=True)
 
     # Create groups table
     op.create_table(
@@ -72,7 +73,7 @@ def upgrade() -> None:
         sa.Column("user_email", sa.String(length=255), nullable=False),
         sa.Column(
             "role",
-            postgresql.ENUM("owner", "member", name="group_role"),
+            postgresql.ENUM("owner", "member", name="group_role", create_type=False),
             nullable=False,
             server_default="member",
         ),
@@ -108,6 +109,7 @@ def upgrade() -> None:
                 "task_template",
                 "inference_run",
                 name="artifact_type_enum",
+                create_type=False,
             ),
             nullable=False,
         ),
