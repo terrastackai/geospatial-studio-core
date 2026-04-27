@@ -710,7 +710,7 @@ async def create_generic_processor(
         aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
-        verify=(settings.ENVIRONMENT.lower() != "local"),
+        verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
     )
     generic_processor_cos_path = (
         f"{str(created_generic_processor.id)}/{generic_processor_file.filename}"
@@ -796,7 +796,7 @@ async def retrieve_generic_processor(
         aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
-        verify=(settings.ENVIRONMENT.lower() != "local"),
+        verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
     )
 
     try:
@@ -1343,7 +1343,7 @@ async def get_fileshare_presigned_urls(
         aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
-        verify=(settings.ENVIRONMENT.lower() != "local"),
+        verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
     )
     try:
         upload_url = generate_upload_presigned_url(

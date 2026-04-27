@@ -3,6 +3,7 @@
 
 
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -53,9 +54,57 @@ async def run_subprocess_cmds(command: list):
         return
 
 
+def get_sa_token():
+    """Read service account token from standard Kubernetes mount path.
+
+    When running inside a Kubernetes pod, the service account token is automatically
+    mounted at /var/run/secrets/kubernetes.io/serviceaccount/token.
+
+    Returns
+    -------
+    str
+        The service account token
+
+    Raises
+    ------
+    ValueError
+        If the token file is not found or cannot be read
+    """
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    try:
+        with open(token_path, 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        raise ValueError(f"Service account token not found at {token_path}")
+
+
+def get_k8s_server_url():
+    """Get the Kubernetes API server URL.
+    
+    First tries to read from the service account (when running inside a cluster),
+    then falls back to settings.
+    
+    Returns
+    -------
+    str
+        The Kubernetes API server URL
+    """
+    try:
+        k8s_host = os.getenv('KUBERNETES_SERVICE_HOST')
+        k8s_port = os.getenv('KUBERNETES_SERVICE_PORT', '443')
+        
+        if k8s_host:
+            server_url = f"https://{k8s_host}:{k8s_port}"
+            logging.debug(f"Detected Kubernetes server from environment: {server_url}")
+            return server_url
+    except Exception as e:
+        logging.debug(f"Could not detect K8s server from environment: {e}")
+
+    raise ValueError("Could not determine Kubernetes server URL.")
+
+
 async def ensure_logged_in(command=COMMAND):
-    """Function that ensures kubectl is able to communicate to Kubernetes control plane.
-    This function will create a ~/.kube/config by calling kubectl login.
+    """Function that ensures kubectl is able to communicate to Kubernetes/OpenShift control plane.
 
     Parameters
     ----------
@@ -64,23 +113,71 @@ async def ensure_logged_in(command=COMMAND):
         COMMAND="kubectl get job --namespace=NAMESPACE"
     """
     try:
-        logging.info("Checking login status with kubectl list...")
+        logging.debug("Checking login status with kubectl list...")
         args = shlex.split(command)
         output = await check_output(*args)
         # If this works, means that we're logged in
-        logging.info(f"kubectl reports we're logged in: {output}")
+        logging.debug(f"kubectl reports we're logged in: {output}")
         return
     except ProcessError:
-        logging.info("Logging into the cluster")
-        login_command = (
-            "bash -xc '"
-            "kubectl login --token=$SATOKEN "
-            "--server=$K8S_SERVER "
-            "--insecure-skip-tls-verify=true'"
-        )
-        await check_output(
-            *shlex.split(login_command),
-        )
+        logging.debug("Logging into the cluster")
+        
+        # Get server URL and token
+        try:
+            k8s_server = get_k8s_server_url()
+            sa_token = get_sa_token()
+        except ValueError as e:
+            logging.error(f"Failed to get cluster credentials: {e}")
+            raise
+        
+        # Check if we're using OpenShift (oc) or Kubernetes (kubectl)
+        # Try oc login first (for OpenShift)
+        try:
+            # Set cluster configuration
+            set_cluster_cmd = [
+                "kubectl",
+                "config",
+                "set-cluster",
+                "default-cluster",
+                f"--server={k8s_server}",
+                "--insecure-skip-tls-verify=true"
+            ]
+            await check_output(*set_cluster_cmd)
+            
+            # Set credentials
+            set_credentials_cmd = [
+                "kubectl",
+                "config",
+                "set-credentials",
+                "default-user",
+                f"--token={sa_token}"
+            ]
+            await check_output(*set_credentials_cmd)
+            
+            # Set context
+            set_context_cmd = [
+                "kubectl",
+                "config",
+                "set-context",
+                "default-context",
+                "--cluster=default-cluster",
+                "--user=default-user"
+            ]
+            await check_output(*set_context_cmd)
+            
+            # Use context
+            use_context_cmd = [
+                "kubectl",
+                "config",
+                "use-context",
+                "default-context"
+            ]
+            await check_output(*use_context_cmd)
+            
+            logging.info("Successfully configured kubectl for Kubernetes")
+        except ProcessError:
+            logging.error("Failed to configure kubectl for Kubernetes")
+            raise
 
 
 def get_current_namespace():
@@ -220,8 +317,9 @@ async def deploy_hpo_tuning_job(
 
     logger.info("Deployment initiated and script executed successfully")
     if settings.CELERY_TASKS_ENABLED and status == "In_progress":
+        monitor_task = kwargs.get("_monitor_task")
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
-        await monitor_k8_job_completion(f"{deployment_id}-hpo")
+        await monitor_k8_job_completion(f"{deployment_id}-hpo",monitor_task=monitor_task)
 
     return deployment_id, status
 
@@ -315,7 +413,11 @@ async def deploy_tuning_job(
                 namespace = settings.NAMESPACE
 
         if not ocp_token:
-            ocp_token = settings.SATOKEN
+            try:
+                ocp_token = get_sa_token()
+            except ValueError as e:
+                logging.error(f"Failed to get service account token: {e}")
+                raise
 
         context = {
             "deployment_name": deployment_id,
@@ -343,29 +445,34 @@ async def deploy_tuning_job(
     logger.info("Deployment initiated and script executed successfully")
     if settings.CELERY_TASKS_ENABLED and status == "In_progress":
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
-        await monitor_k8_job_completion(ftune_id)
+        # Extract monitor_task from kwargs if provided
+        monitor_task = kwargs.get('_monitor_task')
+        await monitor_k8_job_completion(ftune_id, monitor_task=monitor_task)
 
     return deployment_id, status
 
 
-@backoff.on_exception(
-    backoff.constant,
-    ValueError,
-    jitter=None,
-    max_tries=settings.JOB_MAX_RETRY_COUNT,
-    interval=settings.KJOB_MAX_WAIT_SECONDS,
-    raise_on_giveup=False,
-)
-async def monitor_k8_job_completion(ftune_id: str):
-    try:
-        k8s_job_status, _ = await check_k8s_job_status(ftune_id)
-    except Exception as exc:
-        if "not found" in str(exc):
-            return
+async def monitor_k8_job_completion(ftune_id: str, monitor_task=None):
+    """Trigger Celery task to monitor Kubernetes job completion.
+    
+    This function schedules a Celery task that will monitor the job with
+    exponential backoff, releasing the worker between checks.
 
-    logger.info(f"{ftune_id} Waiting for job completion: Job status: {k8s_job_status}")
-    if k8s_job_status not in ["Complete", "Failed"]:
-        raise ValueError(f"{ftune_id}: Wait for task in PENDING state...")
+    Parameters
+    ----------
+    ftune_id : str
+        The fine-tuning job ID to monitor
+    monitor_task : celery.Task, optional
+        The Celery task to use for monitoring. If None, logs a warning.
+    """
+    if monitor_task is None:
+        logger.warning(f"{ftune_id}: No monitoring task provided, job will not be monitored")
+        return
+    
+    # Schedule the monitoring task asynchronously
+    # This releases the current worker immediately
+    monitor_task.apply_async(args=[ftune_id])  # type: ignore[attr-defined]
+    logger.info(f"{ftune_id}: Scheduled monitoring task for job completion")
 
 
 async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
@@ -402,12 +509,13 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
     logger.info(f"kubectl run cmds result: {command} ---> {result}")
 
     if result and result[0] != "":
-        # If job is not In Progress
+        # Job has completion status (Complete or Failed)
         status = result[0].strip()
         logger.info(f"{kjob_id}: Status for job {status}")
         return status, kjob_id
 
     else:
+        # No conditions yet - job might be newly created or still running
         # Attempt retrieval Using labels:
         if retry_label_lookup is True:
             # Remove -job and -hpo suffix if present
@@ -429,9 +537,31 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
             if job_name:
                 result = await check_k8s_job_status(job_name, retry_label_lookup=False)
                 logger.info(f"kubectl retry result: {result}")
-                return result if result else (None, job_name)
-        logger.exception(f"{kjob_id}: Error in check_k8s_job_status: {result}")
-        return None, tune_id
+                # If still no status after retry, treat as Running
+                if result and result[0] is None:
+                    logger.info(f"{job_name}: Job exists but no status yet, treating as Running")
+                    return "Running", job_name
+                return result if result else ("Running", job_name)
+        
+        # Job exists but has no conditions - verify it exists and treat as Running
+        verify_cmd = [
+            "kubectl",
+            "get",
+            "job",
+            kjob_id,
+            "-o",
+            "name",
+        ]
+        verify_result = await run_subprocess_cmds(command=verify_cmd)
+        
+        if verify_result and verify_result[0]:
+            # Job exists but no status conditions yet - it's running or pending
+            logger.info(f"{kjob_id}: Job exists but no status conditions yet, treating as Running")
+            return "Running", kjob_id
+        else:
+            # Job doesn't exist at all
+            logger.warning(f"{kjob_id}: Job not found in cluster")
+            return None, tune_id
 
 
 async def delete_k8s_job_resources(tune_id: str):

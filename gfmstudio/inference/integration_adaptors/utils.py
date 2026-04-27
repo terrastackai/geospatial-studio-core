@@ -67,7 +67,7 @@ def generate_upload_presigned_url(
             aws_secret_access_key=os.getenv("gfm-inference-outputs-cos-secret-key"),
             endpoint_url=cos_service_endpoint,
             config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
-            verify=(settings.ENVIRONMENT.lower() != "local"),
+            verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
         )
 
     signedUrl = s3.generate_presigned_url(

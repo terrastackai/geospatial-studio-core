@@ -3,6 +3,7 @@
 
 
 import ast
+import glob
 import json
 import logging
 import os
@@ -174,13 +175,13 @@ def grab_new_task(engine, process_id):
         task_search_sql = text(
             f"""UPDATE {inf_task_table} SET pipeline_steps = jsonb_set(jsonb_set(pipeline_steps, array[elem_index::text, 'status'], '"RUNNING"'::jsonb), array[elem_index::text, 'start_time'], '"{start_time}"'::jsonb)
         FROM (
-            select 
+            select
                 pos- 1 as elem_index, id as tid
             FROM {inf_task_table} t CROSS JOIN LATERAL jsonb_array_elements(t.pipeline_steps) AS p(j),
                 jsonb_array_elements(pipeline_steps) with ordinality arr(elem, pos)
             where
                 elem->>'process_id' = '{process_id}' AND p->>'process_id' = '{process_id}' AND p->>'status'='READY'
-            ORDER BY priority DESC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED) AS sub_arrange
+            ORDER BY priority ASC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED) AS sub_arrange
             WHERE id=tid RETURNING task_id, inference_id, inference_folder, status;"""
         )
 
@@ -535,10 +536,25 @@ while True:
             # )
             # Add logic when file has no main function
 
+            # Always expect the uploaded generic python scripts to accept the --input and --output folders.
+            output_folder = f"{inference_folder}/{task_id}"
+            input_folder = (
+                pred_files[0]
+                if (pred_files := glob.glob(f"{output_folder}/*_pred.tif"))
+                else output_folder
+            )
+            processor_parameters.update(
+                {"input": input_folder, "output": output_folder}
+            )
+
             process_exec = f"opentelemetry-instrument python {processor_file_path}"
+
             if processor_parameters:
                 for param_key, param_value in processor_parameters.items():
                     process_exec += f" --{param_key} {param_value}"
+            else:
+                # provide the default values
+                process_exec += f" --input {input_folder} --output {output_folder}"
 
             logger.info(
                 f">>>>>> Constructed process_exec for generic-python-processor: {process_exec}"

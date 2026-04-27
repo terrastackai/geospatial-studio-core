@@ -89,9 +89,7 @@ def presigned_url_expires(url, expiry_threshold: int = 0):
 
     """
     try:
-        expiration_time = datetime.datetime.fromtimestamp(
-            int(url.split("Expires=")[1].split("&")[0])
-        )
+        expiration_time = datetime.datetime.fromtimestamp(int(url.split("Expires=")[1].split("&")[0]))
         current_time = datetime.datetime.utcnow()
         time_remaining = expiration_time - current_time
 
@@ -103,10 +101,10 @@ def presigned_url_expires(url, expiry_threshold: int = 0):
         return True, f"Invalid URL: {str(e)}"
 
 
-async def invoke_tune_upload_handler(
-    tune_config_url, tune_checkpoint_url, tune_id, user, db=None
-):
-    db = db or next(utils.get_db())
+async def invoke_tune_upload_handler(tune_config_url, tune_checkpoint_url, tune_id, user, db=None):
+    if db is None:
+        db_gen = utils.get_db()
+        db = await anext(db_gen)
     tune_config_response = None
     tune_checkpoint_response = None
     tune_config_deploy_bucket_key = f"tune-tasks/{tune_id}/config_deploy.yaml"
@@ -123,84 +121,33 @@ async def invoke_tune_upload_handler(
         logger.exception(f"Network error during download:{e}")
         raise
 
-    if settings.ENVIRONMENT.lower() == "local":
-        tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
-        if os.path.isdir(tune_dir) is False:
-            os.mkdir(tune_dir)
+    tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
+    if os.path.isdir(tune_dir) is False:
+        os.makedirs(tune_dir, exist_ok=True)
 
-        tune_config_deploy_bucket_dir = os.path.join(
-            settings.TUNE_BASEDIR, tune_config_deploy_bucket_key
-        )
-        tune_config_bucket_dir = os.path.join(
-            settings.TUNE_BASEDIR, tune_config_bucket_key
-        )
-        tune_checkpoint_bucket_dir = os.path.join(
-            settings.TUNE_BASEDIR, tune_checkpoint_bucket_key
-        )
+    tune_config_deploy_bucket_dir = os.path.join(settings.TUNE_BASEDIR, tune_config_deploy_bucket_key)
+    tune_config_bucket_dir = os.path.join(settings.TUNE_BASEDIR, tune_config_bucket_key)
+    tune_checkpoint_bucket_dir = os.path.join(settings.TUNE_BASEDIR, tune_checkpoint_bucket_key)
 
-        if tune_config_url[0:4] == "http":
-            with open(tune_config_deploy_bucket_dir, "w") as config_file:
-                config_file.write(tune_config_response.text)
-            with open(tune_config_bucket_dir, "w") as config_file:
-                config_file.write(tune_config_response.text)
+    if tune_config_url[0:4] == "http":
+        with open(tune_config_deploy_bucket_dir, "w") as config_file:
+            config_file.write(tune_config_response.text)
+        with open(tune_config_bucket_dir, "w") as config_file:
+            config_file.write(tune_config_response.text)
 
-        elif tune_config_url[0:4] == "file":
-            if not os.path.exists(tune_config_deploy_bucket_dir):
-                shutil.copyfile(tune_config_url[7:], tune_config_deploy_bucket_dir)
-            if not os.path.exists(tune_config_bucket_dir):
-                shutil.copyfile(tune_config_url[7:], tune_config_bucket_dir)
+    elif tune_config_url[0:4] == "file":
+        if not os.path.exists(tune_config_deploy_bucket_dir):
+            shutil.copyfile(tune_config_url[7:], tune_config_deploy_bucket_dir)
+        if not os.path.exists(tune_config_bucket_dir):
+            shutil.copyfile(tune_config_url[7:], tune_config_bucket_dir)
 
-        if tune_checkpoint_url[0:4] == "http":
-            with open(tune_checkpoint_bucket_dir, "wb") as checkpoint_file:
-                checkpoint_file.write(tune_checkpoint_response.content)
-        elif tune_checkpoint_url[0:4] == "file":
-            if not os.path.exists(tune_checkpoint_bucket_dir):
-                shutil.copyfile(tune_checkpoint_url[7:], tune_checkpoint_bucket_dir)
+    if tune_checkpoint_url[0:4] == "http":
+        with open(tune_checkpoint_bucket_dir, "wb") as checkpoint_file:
+            checkpoint_file.write(tune_checkpoint_response.content)
+    elif tune_checkpoint_url[0:4] == "file":
+        if not os.path.exists(tune_checkpoint_bucket_dir):
+            shutil.copyfile(tune_checkpoint_url[7:], tune_checkpoint_bucket_dir)
 
-    else:
-        pipelines_bucket_name = settings.TUNES_FILES_BUCKET
-        try:
-            logger.info(f"Connect to  cos bucket{pipelines_bucket_name}")
-            pipeline_s3_client = boto3.client(
-                "s3",
-                aws_access_key_id=settings.OBJECT_STORAGE_KEY_ID,
-                aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
-                endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
-                config=Config(
-                    signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION
-                ),
-                verify=(settings.ENVIRONMENT.lower() != "local"),
-            )
-        except ValueError as exc:
-            logger.error(f"pipeline_s3_client Misconfiguration: {str(exc)}")
-
-        try:
-            logger.info("Uploading tune config file")
-            # Uploading both config_deploy.yaml and {tune_id}_config.yaml
-            pipeline_s3_client.upload_fileobj(
-                tune_config_response.raw,
-                Bucket=pipelines_bucket_name,
-                Key=tune_config_deploy_bucket_key,
-            )
-            pipeline_s3_client.upload_fileobj(
-                tune_config_response.raw,
-                Bucket=pipelines_bucket_name,
-                Key=tune_config_bucket_key,
-            )
-            logger.info("Uploading tune config Succeeded")
-
-            logger.info("uploading tune checkpoint file")
-            pipeline_s3_client.upload_fileobj(
-                tune_checkpoint_response.raw,
-                Bucket=pipelines_bucket_name,
-                Key=tune_checkpoint_bucket_key,
-            )
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            logger.exception(f"Network error during download:{e}")
-            raise
-        except ClientError as e:
-            logger.exception(f"Failed to upload files to cos: {e}")
-            raise
     logger.info("Updating the tune with {tune_id} status to Finished")
     tunes_crud.update(
         db=db,
@@ -224,12 +171,8 @@ def giveup_hdlr(details):
     Raises:
         Connection error: If connection fails and retries are exhausted.
     """
-    logger.error(
-        f"Giving up after {details['tries']} tries for args: {details['args']}"
-    )
-    raise requests.exceptions.ConnectionError(
-        "Max retries reached in dowload_with_backoff"
-    )
+    logger.error(f"Giving up after {details['tries']} tries for args: {details['args']}")
+    raise requests.exceptions.ConnectionError("Max retries reached in dowload_with_backoff")
 
 
 def fatal_code(e):
@@ -299,11 +242,13 @@ async def invoke_cancel_inference_handler(
     Returns:
         None
     """
-    session = db_session or next(utils.get_db())
+    if db_session is None:
+        db_gen = utils.get_db()
+        session = await anext(db_gen)
+    else:
+        session = db_session
 
-    existing_inference = inference_crud.get_by_id(
-        db=session, item_id=inference_id, user=user
-    )
+    existing_inference = inference_crud.get_by_id(db=session, item_id=inference_id, user=user)
     if not existing_inference:
         logger.warning(f"Inference {inference_id} not found for user")
         return {
@@ -312,9 +257,7 @@ async def invoke_cancel_inference_handler(
         }
 
     # Check tasks under the inference
-    inference_tasks = task_crud.get_all(
-        db=session, user=user, filters={"inference_id": inference_id}
-    )
+    inference_tasks = task_crud.get_all(db=session, user=user, filters={"inference_id": inference_id})
     # Change status of certain tasks to stopped
     running_tasks = []
     for task in inference_tasks:
@@ -322,9 +265,7 @@ async def invoke_cancel_inference_handler(
             running_tasks.append(task)
         elif task.status not in ["FINISHED", "DONE", "FAILED", "RUNNING", "STOPPED"]:
             status = "STOPPED"
-            logger.info(
-                "Updating the status for Inference-%s, user-%s", inference_id, user
-            )
+            logger.info("Updating the status for Inference-%s, user-%s", inference_id, user)
             update_item = {"status": status}
             task_crud.update(
                 db=session,
@@ -349,17 +290,13 @@ async def invoke_cancel_inference_handler(
         if not running_tasks:
             break
 
-        logger.info(
-            f"Running tasks detected. Waiting for {backoff} seconds before checking again."
-        )
+        logger.info(f"Running tasks detected. Waiting for {backoff} seconds before checking again.")
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, max_backoff)
 
     TERMINAL_STATUS = {"FINISHED", "DONE", "FAILED", "STOPPED"}
     session.expire_all()
-    inference_tasks = task_crud.get_all(
-        session, user=user, filters={"inference_id": inference_id}
-    )
+    inference_tasks = task_crud.get_all(session, user=user, filters={"inference_id": inference_id})
     if all(task.status in TERMINAL_STATUS for task in inference_tasks):
         inference_crud.update(
             db=session,
@@ -370,6 +307,4 @@ async def invoke_cancel_inference_handler(
 
         logger.info(f"Inference {inference_id} status updated to STOPPED.")
     else:
-        logger.info(
-            f"Inference {inference_id} not fully stopped.some tasks still incomplete."
-        )
+        logger.info(f"Inference {inference_id} not fully stopped.some tasks still incomplete.")

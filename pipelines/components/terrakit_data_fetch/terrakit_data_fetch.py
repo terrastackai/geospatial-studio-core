@@ -7,11 +7,19 @@ The TerraKit process will query data from a range of different data connectors
 """
 
 # Dependencies
-# pip install terrakit==0.1.0 requests opentelemetry-distro opentelemetry-exporter-otlp
+# pip install terrakit==0.1.0 requests opentelemetry-distro opentelemetry-exporter-otlp tenacity
 
 import os
 import json
 import numpy as np
+import logging
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_fixed,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 from terrakit import DataConnector
 from terrakit.download.geodata_utils import save_data_array_to_file
 from terrakit.download.transformations.scale_data_xarray import scale_data_xarray
@@ -47,6 +55,34 @@ def s1grd_to_decibels(da, modality_tag):
         da[0, 0, :, :] = to_decibels(da[0, 0, :, :])
         da[0, 1, :, :] = to_decibels(da[0, 1, :, :])
     return da
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(5),
+    retry=retry_if_exception_type((RuntimeError, ConnectionError, OSError)),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def fetch_data_with_retry(dc, collection_name, data_date, bbox, maxcc, band_names, save_filepath, task_folder):
+    """
+    Fetch data from connector with automatic retry on network errors.
+    Retries up to 3 times with 5 second delays for network-related errors:
+    - RuntimeError (includes RasterioIOError)
+    - ConnectionError
+    - OSError (includes CURL errors)
+    """
+    logger.info(f"Attempting to fetch data for collection: {collection_name}")
+    return dc.connector.get_data(
+        data_collection_name=collection_name,
+        date_start=data_date,
+        date_end=data_date,
+        bbox=bbox,
+        maxcc=maxcc,
+        bands=band_names,
+        save_file=save_filepath,
+        working_dir=task_folder,
+    )
 
 
 @metric_manager.count_failures(inference_id=inference_id, task_id=task_id)
@@ -124,15 +160,16 @@ def terrakit_data_fetch():
 
             band_names = list(band_dict.get("band_name") for band_dict in model_input_data_spec["bands"])
 
-            da = dc.connector.get_data(
-                data_collection_name=collection_name,
-                date_start=data_date,
-                date_end=data_date,
+            # Use tenacity for automatic retry on network errors
+            da = fetch_data_with_retry(
+                dc=dc,
+                collection_name=collection_name,
+                data_date=data_date,
                 bbox=bbox,
                 maxcc=maxcc,
-                bands=band_names,
-                save_file=save_filepath,
-                working_dir=task_folder,
+                band_names=band_names,
+                save_filepath=save_filepath,
+                task_folder=task_folder,
             )
             logger.debug("\n\nRetrieved data cube\n\n")
             logger.debug(da)

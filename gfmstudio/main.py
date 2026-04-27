@@ -3,6 +3,7 @@
 
 
 import copy
+from contextlib import asynccontextmanager
 
 import redis
 from fastapi import FastAPI, HTTPException, Request
@@ -15,6 +16,7 @@ from gfmstudio import websockets
 from gfmstudio.amo import api as amo_apis
 from gfmstudio.auth import routes as auth_routes
 from gfmstudio.auth.rate_limit_middleware import RateLimitMiddleware
+from gfmstudio.common.api import healthz
 from gfmstudio.config import settings
 from gfmstudio.cos_client import init_cos_client
 from gfmstudio.fine_tuning import api as geoft_apis
@@ -64,27 +66,51 @@ tags_metadata = [
     },
 ]
 
-REDIS_CLIENT = None
-
 
 def initialize_redis():
     """Establish a connection to the Redis server."""
     logger.info("🔌 Initializing Redis ...")
-    global REDIS_CLIENT
     try:
-        # Initialize the Redis client using from_url
-        REDIS_CLIENT = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
         logger.info("✅ Redis Initialized Successfully")
-        return REDIS_CLIENT
+        return redis_client
     except redis.exceptions.ConnectionError as e:
         logger.warning(f"❌ Redis: Connection error: {settings.REDIS_URL} > {str(e)}")
+        return None
     except Exception as e:
-        logger.warning(
-            f"❌ Redis: An unexpected error occurred: {settings.REDIS_URL} > {str(e)}"
-        )
+        logger.warning(f"❌ Redis: An unexpected error occurred: {settings.REDIS_URL} > {str(e)}")
+        return None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager to handle startup and shutdown events.
+
+    - Startup: Initialize Redis, COS client, and other resources
+    - Shutdown: Cleanup connections and resources
+    """
+    logger.info("🚀 Application startup initiated")
+    app.state.redis_client = initialize_redis()
+    init_cos_client(app)
+    logger.info("✅ Application startup complete")
+
+    yield
+
+    # Shutdown
+    logger.info("🛑 Application shutdown initiated")
+    if hasattr(app.state, "redis_client") and app.state.redis_client:
+        try:
+            app.state.redis_client.close()
+            logger.info("✅ Redis connection closed")
+        except Exception as e:
+            logger.error(f"❌ Error closing Redis connection: {e}")
+
+    logger.info("✅ Application shutdown complete")
 
 
 app = FastAPI(
+    lifespan=lifespan,
     title="fm.geospatial inference APIs",
     version="2.0.0",
     summary="Geospatial Studio Inference Gateway APIs.",
@@ -114,6 +140,14 @@ RATE_LIMIT_CONFIG = {
                 "window": settings.RATELIMIT_SENSITIVE_RESOURCE_WINDOW,
             }
         },
+        "/v2/datasets/onboard": {
+            "POST": {
+                "limit": settings.RATELIMIT_SENSITIVE_RESOURCE_LIMIT,
+                "window": settings.RATELIMIT_SENSITIVE_RESOURCE_WINDOW,
+            }
+        },
+        "/health/livez": {"GET": {"limit": 100, "window": 60}},
+        "/health/readyz": {"GET": {"limit": 100, "window": 60}},
         #  "/v1/base-models": {
         #     "GET": {"limit": 5, "window": 60}
         # },
@@ -130,23 +164,22 @@ RATE_LIMIT_CONFIG = {
 }
 
 
-# Extend the config if custom RATE_LIMIT_CONFIGS are defined
+# Extend the config if custom RATE_LIMIT_CONFIG is defined via environment variable
 if settings.RATE_LIMIT_CONFIG and isinstance(settings.RATE_LIMIT_CONFIG, dict):
-    custom_rate_limit = copy.deepcopy(settings.RATE_LIMIT_CONFIG)
-    custom_rate_limit.update(RATE_LIMIT_CONFIG)
-    RATE_LIMIT_CONFIG = custom_rate_limit
+    merged_config = copy.deepcopy(settings.RATE_LIMIT_CONFIG)
+    for key in RATE_LIMIT_CONFIG:
+        if key in merged_config:
+            merged_config[key].update(RATE_LIMIT_CONFIG[key])
+        else:
+            merged_config[key] = RATE_LIMIT_CONFIG[key]
+    RATE_LIMIT_CONFIG = merged_config
 
 if settings.RATELIMIT_ENABLED is True:
     app.add_middleware(
         RateLimitMiddleware,
-        redis_client=REDIS_CLIENT or initialize_redis(),
+        redis_client=None,  # Will be set from app.state during requests
         rate_limit_config=RATE_LIMIT_CONFIG,
     )
-
-
-@app.on_event("startup")
-async def startup_event():
-    init_cos_client(app)
 
 
 @app.exception_handler(ValidationError)
@@ -166,7 +199,8 @@ async def docs_redirect():
     return RedirectResponse(url="/docs")
 
 
-# api_router.include_router(healthz.router, tags=["v1-healthz"])
+# Register health check endpoints (critical for Kubernetes probes)
+app.include_router(healthz.router, prefix="/health", tags=["Health"])
 
 # api_router.include_router(api_events.events_router)
 

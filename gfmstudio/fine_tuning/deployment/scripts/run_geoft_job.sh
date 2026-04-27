@@ -41,7 +41,7 @@ export TUNE_ID=$4
 export FT_WEBHOOKS_ID=$6
 export FT_WEBHOOKS_URL=$7
 export FTUNING_RUNTIME_IMAGE=$8
-export IMAGE_PULL_SECRET=${9:-ris-private-registry}
+export IMAGE_PULL_SECRET=${9}
 export RESOURCE_LIMIT_CPU=${10:-10}
 export RESOURCE_LIMIT_Memory=${11:-32}
 export RESOURCE_LIMIT_GPU=${12:-1}
@@ -61,6 +61,13 @@ EOF
 
 envsubst < "/tmp/$output_manifest_yaml" > "/tmp/${output_manifest_yaml}.tmp" \
     && mv "/tmp/${output_manifest_yaml}.tmp" "/tmp/$output_manifest_yaml"
+
+# Remove imagePullSecrets section if IMAGE_PULL_SECRET is empty
+if [ -z "$IMAGE_PULL_SECRET" ]; then
+    echo "IMAGE_PULL_SECRET is empty, removing imagePullSecrets from manifest"
+    # Remove the imagePullSecrets section (handles both single-line and multi-line formats)
+    sed -i '/imagePullSecrets:/,/^[^ ]/{ /imagePullSecrets:/d; /- name:/d; /^[^ ]/!d; }' "/tmp/$output_manifest_yaml"
+fi
 
 # kubectl apply --dry-run=client -f "/tmp/$output_manifest_yaml"
 kubectl apply -f "/tmp/$output_manifest_yaml"
