@@ -48,7 +48,7 @@ metric_manager = MetricManager(component_name=process_id)
 
 # Initialize cache manager using existing /data mount with /cache subfolder
 cache_manager = TerrakitPVCacheManager(
-    cache_dir=os.getenv("TERRAKIT_CACHE_DIR", "/data/cache"),
+    cache_dir=os.getenv("TERRAKIT_CACHE_DIR", "/pipeline/data/cache"),
     cache_ttl_days=int(os.getenv("TERRAKIT_CACHE_TTL_DAYS", "30")),
     max_cache_size_gb=float(os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB")) if os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB") else None,
     enabled=os.getenv("TERRAKIT_CACHE_ENABLED", "true").lower() == "true"
