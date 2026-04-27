@@ -62,6 +62,8 @@ RUN mkdir /pipeline
 COPY ./general_libraries/gfm_logger /pipeline/gfm_logger
 COPY ./general_libraries/gfm_data_processing /pipeline/gfm_data_processing
 COPY ./general_libraries/orchestrate_wrapper /pipeline/
+COPY ./general_libraries/terrakit_cache /pipeline/terrakit_cache
+
 
 ########## Adding specific processor scripts
 # inference planner
@@ -95,12 +97,13 @@ COPY ./components/curated_upload/claimed_curated_upload_v2.py /pipeline/
 
 ######## Group ownership, data directory and file permission
 RUN mkdir /pipeline/data \
+&& mkdir -p /pipeline/data/cache \
 && mkdir -p /.config/sentinelhub \
 && mkdir /.docker && chmod -R 777 /.docker \
 && mkdir /.local && chmod -R 777 /.local \
 && mkdir /.cache && chmod -R 777 /.cache \
-&& chown -R 10001:10001 /pipeline/ /pipeline/data \
-&& chmod -R 777 /pipeline/ /pipeline/data
+&& chown -R 10001:10001 /pipeline/ /pipeline/data /pipeline/data/cache \
+&& chmod -R 777 /pipeline/ /pipeline/data /pipeline/data/cache
 
 COPY ./components/terrakit_data_fetch/sentinelhub_config.toml /.config/sentinelhub/config.toml
 RUN chmod -R 777 /.config/sentinelhub/
