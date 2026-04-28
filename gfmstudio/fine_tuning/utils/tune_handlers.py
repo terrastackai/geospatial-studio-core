@@ -732,8 +732,8 @@ async def submit_tune_job(
 
     try:
         if settings.CELERY_TASKS_ENABLED:
-            # Submit via Celery
-            deploy_tuning_job_celery_task.apply_async(
+            # Submit via Celery - job creation happens in background
+            result = deploy_tuning_job_celery_task.apply_async(
                 kwargs={
                     "ftune_id": tune_id,
                     "ftune_config_file": config_path,
@@ -742,9 +742,24 @@ async def submit_tune_job(
                 },
                 task_id=tune_id,
             )
-            ftune_job_id = f"kjob-{tune_id}".lower()
-            # Keep status as "Pending" - will be updated by monitoring task when pod starts running
-            status = "Pending"
+            
+            # Wait briefly to check if job creation succeeded or failed immediately
+            try:
+                job_result = result.get(timeout=5)  # Wait up to 5 seconds
+                ftune_job_id, job_status = job_result
+                
+                # If job creation failed, set status to Error/Failed
+                if job_status == "Error":
+                    status = "Failed"
+                else:
+                    # Job created successfully, keep as Pending until pod runs
+                    ftune_job_id = f"kjob-{tune_id}".lower()
+                    status = "Pending"
+            except Exception as e:
+                # Timeout or other error - assume job is being created
+                logger.debug(f"{tune_id}: Job creation in progress: {e}")
+                ftune_job_id = f"kjob-{tune_id}".lower()
+                status = "Pending"
         else:
             # Submit directly
             ftune_job_id, updated_status = await deploy_tuning_job(
@@ -754,8 +769,11 @@ async def submit_tune_job(
                 tune_type=schemas.TuneOptionEnum.K8_JOB,
             )
             
+            # If job creation failed, return Error status immediately
+            if updated_status == "Error":
+                status = "Failed"
             # Check actual pod status to determine if truly in progress
-            if updated_status == "In_progress":
+            elif updated_status == "In_progress":
                 from gfmstudio.fine_tuning.core.kubernetes import check_k8s_job_status
                 k8s_status, _ = await check_k8s_job_status(tune_id, check_pod_phase=True)
                 
