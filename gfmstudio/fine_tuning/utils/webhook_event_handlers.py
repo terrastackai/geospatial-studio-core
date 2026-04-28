@@ -180,8 +180,9 @@ async def handle_fine_tuning_webhooks(event: Union[NotificationCreate, dict], us
     full_s3_log_file_path = ""
     
     if event.detail_type == "Ftune:Task:JobNotifications":
-        logger.debug(f"Ftune:Task:JobNotifications: {event.detail}")
-        webhook_status = event.detail["status"]
+        webhook_status = event.detail.get("status", "Unknown")
+        logger.info(f"{tune_id}: Received webhook with status: {webhook_status}")
+        logger.debug(f"Ftune:Task:JobNotifications full detail: {event.detail}")
         
         # Handle different webhook statuses
         if webhook_status == "Running":
@@ -225,14 +226,18 @@ async def handle_fine_tuning_webhooks(event: Union[NotificationCreate, dict], us
             user = tunes.created_by or user
             
             # Map webhook status to database status
-            webhook_status = event.detail["status"]
+            webhook_status = event.detail.get("status", "Unknown")
             db_status = webhook_status
             if webhook_status == "Running":
                 db_status = "In_progress"
             
+            logger.info(f"{tune_id}: Mapping webhook status '{webhook_status}' to DB status '{db_status}'")
+            
             update_data = {"status": db_status}
             if full_s3_log_file_path:
                 update_data["logs"] = full_s3_log_file_path
+            
+            logger.info(f"{tune_id}: Updating database with: {update_data}")
                 
             tune_crud.update(
                 db=session,
@@ -240,9 +245,11 @@ async def handle_fine_tuning_webhooks(event: Union[NotificationCreate, dict], us
                 item=update_data,
                 protected=False,
             )
-            logger.info(f"{tune_id}: Status updated to {db_status}")
-    except Exception:
-        logger.exception("Tune status was not updated.")
+            logger.info(f"{tune_id}: Database updated successfully - Status is now '{db_status}'")
+        else:
+            logger.warning(f"{tune_id}: Tune not found in database, cannot update status")
+    except Exception as e:
+        logger.exception(f"{tune_id}: Failed to update tune status: {e}")
 
     # Only revoke Celery task on terminal states (no longer needed since we removed blocking)
     if settings.CELERY_TASKS_ENABLED and event.detail["status"] in ["Failed", "Finished", "Error"]:
