@@ -46,9 +46,9 @@ process_id = os.getenv("process_id", "terrakit-data-fetch")
 
 metric_manager = MetricManager(component_name=process_id)
 
-# Initialize cache manager using existing /data mount with /cache subfolder
+# Initialize cache manager
 cache_manager = TerrakitPVCacheManager(
-    cache_dir=os.getenv("TERRAKIT_CACHE_DIR", "/pipeline/data/cache"),
+    cache_dir=os.getenv("TERRAKIT_CACHE_DIR", "/pipeline/data/terrakit_cache"),
     cache_ttl_days=int(os.getenv("TERRAKIT_CACHE_TTL_DAYS", "30")),
     max_cache_size_gb=float(os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB")) if os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB") else None,
     enabled=os.getenv("TERRAKIT_CACHE_ENABLED", "true").lower() == "true"
@@ -180,11 +180,10 @@ def terrakit_data_fetch():
                 transform=model_input_data_spec.get("transform")
             )
             
-            # Check cache first (in /data/cache)
             cached_data = cache_manager.get_cached_files(cache_key)
             
             if cached_data:
-                # Cache hit - copy from /data/cache to task folder
+                # Cache hit - copy from cache to task folder
                 logger.info(f"🎯 Using cached data for {modality_tag} on {data_date}")
                 
                 original_pv_path = cached_data["original_pv_path"]
@@ -240,7 +239,7 @@ def terrakit_data_fetch():
             original_input_images += [save_filepath]
             imputed_input_images += [imputed_file_path]
             
-            # Cache the files to /data/cache
+            # Cache the files to /pipeline/data/terrakit_cache
             cache_metadata = {
                 "date": data_date,
                 "bbox": bbox,

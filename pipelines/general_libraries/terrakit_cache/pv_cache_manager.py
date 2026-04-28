@@ -53,7 +53,7 @@ class TerrakitPVCacheManager:
         Initialize PV cache manager.
 
         Args:
-            cache_dir: Path to shared PV mount point (e.g., /data/cache)
+            cache_dir: Path to shared PV mount point
             cache_ttl_days: Cache expiration in days (default: 30)
             enabled: Enable/disable caching (default: True)
             max_cache_size_gb: Optional max cache size in GB
