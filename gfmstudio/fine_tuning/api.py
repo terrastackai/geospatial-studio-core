@@ -110,20 +110,6 @@ dataset_crud = crud.ItemCrud(model=GeoDataset)
 inference_crud = crud.ItemCrud(model=Inference)
 inference_model_crud = crud.ItemCrud(model=InferenceModel)
 
-"""
-Create file folders if they don't exist already
-"""
-if settings.ENVIRONMENT.lower() == "local":
-    tasks_dir = os.path.join(settings.TUNE_BASEDIR, "tune-tasks")
-    if os.path.isdir(tasks_dir) is False:
-        logger.info(f"Creating tasks directory: {tasks_dir}")
-        os.makedirs(tasks_dir)
-
-    trained_dir = os.path.join(settings.TUNE_BASEDIR, "pre-trained")
-    if os.path.isdir(trained_dir) is False:
-        logger.info(f"Creating pre-trained directory: {trained_dir}")
-        os.makedirs(trained_dir)
-
 
 ###############################################
 # ---- Get token endpoint
@@ -996,7 +982,7 @@ async def submit_hpo_tune_yaml(
         bucket_key = f"tune-tasks/{tune_id}/{tune_id}_config.yaml"
         tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
         if os.path.isdir(tune_dir) is False:
-            os.mkdir(tune_dir)
+            os.makedirs(tune_dir, exist_ok=True)
 
         bucket_dir = os.path.join(settings.TUNE_BASEDIR, bucket_key)
         config_data = yaml.load(config_content, Loader=yaml.SafeLoader)

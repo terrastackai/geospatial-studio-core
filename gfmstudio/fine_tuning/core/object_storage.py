@@ -54,7 +54,7 @@ def object_storage_client(settings_: Optional[Settings] = None) -> S3Client:
         aws_secret_access_key=settings_.OBJECT_STORAGE_SEC_KEY,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
         region_name=settings_.OBJECT_STORAGE_REGION,
-        verify=(settings.ENVIRONMENT.lower() != "local"),
+        verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
     )
     return s3
 

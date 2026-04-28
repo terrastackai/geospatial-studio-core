@@ -253,25 +253,28 @@ def get_pipeline_steps(inference: schemas.InferenceCreateInput, model_obj) -> li
 def insert_generic_processor_to_pipeline_steps(
     pipeline_steps: list, generic_processor_step: dict
 ) -> list:
-    """Insert generic processor step into pipeline steps right before the push_to_geoserver."""
+    """Insert generic processor step into pipeline steps right before the postprocess-generic."""
 
-    # Find the index of the item with process_id 'push-to-geoserver'
-    push_to_geoserver_index = next(
+    # Find the index of the item with process_id 'postprocess-generic'
+    postprocess_generic_index = next(
         i
         for i, step in enumerate(pipeline_steps)
-        if step["process_id"] == "push-to-geoserver"
+        if step["process_id"] == "postprocess-generic"
     )
 
-    # Adjust the step_number of the new item to match 'push-to-geoserver'
-    generic_processor_step["step_number"] = pipeline_steps[push_to_geoserver_index][
+    # Adjust the step_number of the new item to match 'postprocess-generic'
+    generic_processor_step["step_number"] = pipeline_steps[postprocess_generic_index][
         "step_number"
     ]
 
-    # Insert the new item before 'push-to-geoserver'
-    pipeline_steps.insert(push_to_geoserver_index, generic_processor_step)
+    # Insert the new item before 'postprocess-generic'
+    pipeline_steps.insert(postprocess_generic_index, generic_processor_step)
+
+    # Increment the step_number of 'postprocess-generic'
+    pipeline_steps[postprocess_generic_index + 1]["step_number"] += 1
 
     # Increment the step_number of 'push-to-geoserver'
-    pipeline_steps[push_to_geoserver_index + 1]["step_number"] += 1
+    pipeline_steps[postprocess_generic_index + 2]["step_number"] += 1
 
     return pipeline_steps
 
