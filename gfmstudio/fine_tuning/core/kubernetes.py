@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
+import asyncio
 import logging
 import os
 import re
@@ -317,9 +318,15 @@ async def deploy_hpo_tuning_job(
 
     logger.info("Deployment initiated and script executed successfully")
     if settings.CELERY_TASKS_ENABLED and status == "In_progress":
-        monitor_task = kwargs.get("_monitor_task")
-        # For celery tasks, wait untill the kubernetes job is complete before exiting.
-        await monitor_k8_job_completion(f"{deployment_id}-hpo",monitor_task=monitor_task)
+        # Extract monitor_task from kwargs
+        monitor_task = kwargs.get('_monitor_task')
+        if monitor_task:
+            # Use Celery task for non-blocking monitoring
+            monitor_task.delay(f"{deployment_id}-hpo")
+            logger.info(f"{deployment_id}-hpo: Scheduled monitoring task for job completion")
+        else:
+            # Fallback to blocking monitoring if no task provided
+            logger.warning(f"{deployment_id}-hpo: No monitoring task provided, job will not be monitored")
 
     return deployment_id, status
 
@@ -392,16 +399,45 @@ async def deploy_tuning_job(
         process = Popen(command, stdin=PIPE, stderr=PIPE)
         stdoutdata, stderrdata = process.communicate()
         if process.returncode != 0:
-            # send webhook of failure of job creation to UI
+            # Job creation failed
             logger.exception(
                 f"Error creating resources for job {deployment_id}: {stderrdata}"
             )
             status = "Error"
 
         else:
-            # update status to In Progress
-            logger.info(f"In Progress for job {deployment_id}:  {stdoutdata}")
-            status = "In_progress"
+            # Job created successfully - verify it exists and get initial status
+            logger.info(f"Job {deployment_id} created successfully: {stdoutdata}")
+            
+            # Verify job was actually created and check if pod is running
+            try:
+                await asyncio.sleep(2)  # Brief wait for job to initialize
+                job_status, _ = await check_k8s_job_status(ftune_id)
+                
+                # Check pod status to see if it's actually running or just pending
+                pod_status_cmd = [
+                    "kubectl", "get", "pods",
+                    "-l", f"job-name={deployment_id}-job",
+                    "-o", "jsonpath={.items[0].status.phase}",
+                ]
+                pod_result = await run_subprocess_cmds(command=pod_status_cmd)
+                pod_phase = pod_result[0].strip() if pod_result and pod_result[0] else ""
+                
+                logger.info(f"{deployment_id}: Job status={job_status}, Pod phase={pod_phase}")
+                
+                # Set status based on actual state
+                if job_status in ["Complete", "Failed"]:
+                    status = job_status
+                elif pod_phase == "Running":
+                    status = "In_progress"
+                elif pod_phase in ["Pending", "ContainerCreating"]:
+                    status = "Pending"  # Waiting for resources
+                else:
+                    status = "Submitted"  # Job created but pod not yet scheduled
+                    
+            except Exception as e:
+                logger.warning(f"{deployment_id}: Could not verify job status: {e}")
+                status = "Submitted"  # Conservative status if verification fails
 
     elif tune_type == schemas.TuneOptionEnum.RAY_IO:
         deployment_id = f"rhoairay-{ftune_id}".lower()
@@ -443,11 +479,9 @@ async def deploy_tuning_job(
         )
 
     logger.info("Deployment initiated and script executed successfully")
-    if settings.CELERY_TASKS_ENABLED and status == "In_progress":
-        # For celery tasks, wait untill the kubernetes job is complete before exiting.
-        # Extract monitor_task from kwargs if provided
-        monitor_task = kwargs.get('_monitor_task')
-        await monitor_k8_job_completion(ftune_id, monitor_task=monitor_task)
+    # NOTE: Removed blocking monitor_k8_job_completion call
+    # Webhooks will notify us when the job completes (Finished/Failed)
+    # This allows the Celery worker to be released immediately
 
     return deployment_id, status
 

@@ -148,9 +148,10 @@ async def handle_fine_tuning_webhooks(event: Union[NotificationCreate, dict], us
     """Handle fine tuning service webhook events.
 
     For Tuning tasks, if status is;
+        Running: Pod is now running, update status to In_progress
         Failed: Pod logs are collected and pushed to COS & All tuning resources deleted
         Finished: All tuning resources deleted
-        Errored: Logger (At this point all tuning resources are already deleted because no pod started.)
+        Error: Logger (At this point all tuning resources are already deleted because no pod started.)
 
     Parameters
     ----------
@@ -177,46 +178,80 @@ async def handle_fine_tuning_webhooks(event: Union[NotificationCreate, dict], us
     notification_id = None
 
     full_s3_log_file_path = ""
-    # If detail_type is Ftune:Task:JobNotifications, delete resources
-    logs = await collect_pod_logs(tune_id=tune_id)
-
-    if logs:
-        # Push log file to COS
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
-        await upload_logs_cos(logs, full_s3_log_file_path)
-
+    
     if event.detail_type == "Ftune:Task:JobNotifications":
         logger.debug(f"Ftune:Task:JobNotifications: {event.detail}")
-        # if status is Failed, push the collected logs to COS
-        if event.detail["status"] == "Failed":
-            logger.debug(f"{tune_id}: Tuning task failed. Sending pod logs to COS")
-        elif event.detail["status"] == "Finished":
+        webhook_status = event.detail["status"]
+        
+        # Handle different webhook statuses
+        if webhook_status == "Running":
+            # Pod is now running - update status to In_progress
+            logger.info(f"{tune_id}: Pod is now running, updating status to In_progress")
+            # No need to collect logs or delete resources yet
+            
+        elif webhook_status == "Failed":
+            # Collect logs and delete resources
+            logger.debug(f"{tune_id}: Tuning task failed. Collecting pod logs")
+            logs = await collect_pod_logs(tune_id=tune_id)
+            if logs:
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
+                await upload_logs_cos(logs, full_s3_log_file_path)
+            await free_k8s_resources(tune_id)
+            
+        elif webhook_status == "Finished":
+            # Collect logs and delete resources
             logger.debug(f"{tune_id}: Tuning Task finished successfully")
-        elif event.detail["status"] == "Error":
+            logs = await collect_pod_logs(tune_id=tune_id)
+            if logs:
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
+                await upload_logs_cos(logs, full_s3_log_file_path)
+            await free_k8s_resources(tune_id)
+            
+        elif webhook_status == "Error":
             logger.debug(f"{tune_id}: Tuning Task Errored and resources already deleted.")
-        await free_k8s_resources(tune_id)
+            # Try to collect logs if available
+            logs = await collect_pod_logs(tune_id=tune_id)
+            if logs:
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
+                await upload_logs_cos(logs, full_s3_log_file_path)
 
     try:
         tune_id = str(event.detail["tune_id"])
         tunes = tune_crud.get_by_id(db=session, item_id=tune_id)
         if tunes:
             user = tunes.created_by or user
+            
+            # Map webhook status to database status
+            webhook_status = event.detail["status"]
+            db_status = webhook_status
+            if webhook_status == "Running":
+                db_status = "In_progress"
+            
+            update_data = {"status": db_status}
+            if full_s3_log_file_path:
+                update_data["logs"] = full_s3_log_file_path
+                
             tune_crud.update(
                 db=session,
                 item_id=tune_id,
-                item={"status": event.detail["status"], "logs": full_s3_log_file_path},
+                item=update_data,
                 protected=False,
             )
+            logger.info(f"{tune_id}: Status updated to {db_status}")
     except Exception:
         logger.exception("Tune status was not updated.")
 
-    if settings.CELERY_TASKS_ENABLED:
+    # Only revoke Celery task on terminal states (no longer needed since we removed blocking)
+    if settings.CELERY_TASKS_ENABLED and event.detail["status"] in ["Failed", "Finished", "Error"]:
         # Inline import to avoid circular dependency
         from gfmstudio.celery_worker import celery_app
 
-        # Send signal to kill celery job.
+        # Send signal to kill celery job if it's still running
         celery_app.control.revoke(tune_id, terminate=True, signal="SIGTERM")
+        logger.info(f"{tune_id}: Revoked Celery task")
 
     return notification_id
 
