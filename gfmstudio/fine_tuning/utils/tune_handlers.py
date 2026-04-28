@@ -743,7 +743,8 @@ async def submit_tune_job(
                 task_id=tune_id,
             )
             ftune_job_id = f"kjob-{tune_id}".lower()
-            status = "In_progress"
+            # Keep status as "Pending" - will be updated by monitoring task when pod starts running
+            status = "Pending"
         else:
             # Submit directly
             ftune_job_id, updated_status = await deploy_tuning_job(
@@ -752,7 +753,21 @@ async def submit_tune_job(
                 ftuning_runtime_image=runtime_image,
                 tune_type=schemas.TuneOptionEnum.K8_JOB,
             )
-            status = updated_status or "Submitted"
+            
+            # Check actual pod status to determine if truly in progress
+            if updated_status == "In_progress":
+                from gfmstudio.fine_tuning.core.kubernetes import check_k8s_job_status
+                k8s_status, _ = await check_k8s_job_status(tune_id, check_pod_phase=True)
+                
+                if k8s_status == "Running":
+                    status = "In_progress"
+                elif k8s_status == "Pending":
+                    status = "Pending"
+                else:
+                    # For other statuses (Complete, Failed, None), use the updated_status
+                    status = updated_status
+            else:
+                status = updated_status or "Submitted"
 
         logger.info(f"Tune job {ftune_job_id} submitted with status: {status}")
 
