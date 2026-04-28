@@ -475,15 +475,65 @@ async def monitor_k8_job_completion(ftune_id: str, monitor_task=None):
     logger.info(f"{ftune_id}: Scheduled monitoring task for job completion")
 
 
-async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
+async def check_pod_status(job_name: str) -> str:
+    """Check the status of a pod associated with a Kubernetes job.
+    
+    This function checks if the pod is actually running, not just pending.
+    Useful for determining if a job is truly in progress or just waiting for resources.
+
+    Parameters
+    ----------
+    job_name : str
+        The Kubernetes job name
+
+    Returns
+    -------
+    str
+        The pod phase: 'Running', 'Pending', 'Succeeded', 'Failed', 'Unknown', or None if no pod found
+    """
+    try:
+        await ensure_logged_in(f"kubectl get job --namespace={settings.NAMESPACE}")
+        
+        # Get pod status using the job-name label
+        command = [
+            "kubectl",
+            "get",
+            "pods",
+            "-l",
+            f"job-name={job_name}",
+            "-o",
+            "jsonpath={.items[0].status.phase}",
+        ]
+        
+        result = await run_subprocess_cmds(command=command)
+        
+        if result and result[0]:
+            pod_phase = result[0].strip()
+            logger.info(f"{job_name}: Pod phase is '{pod_phase}'")
+            return pod_phase
+        else:
+            logger.debug(f"{job_name}: No pod found for job (may have been deleted)")
+            return None
+    except Exception as e:
+        # Handle case where job/pod has been deleted by webhook
+        logger.debug(f"{job_name}: Error checking pod status (likely deleted): {e}")
+        return None
+
+
+async def check_k8s_job_status(tune_id: str, retry_label_lookup=True, check_pod_phase=True):
     """Function to check Kubernetes job status
+    
+    This function checks both the job status and optionally the pod phase to determine
+    if a job is truly running or just waiting for resources (pending).
 
     Parameters
     ----------
     tune_id : str
         Tune id
     retry_label_lookup: bool
-        Wheather to retry lookup with labels.
+        Whether to retry lookup with labels.
+    check_pod_phase: bool
+        Whether to check the pod phase to distinguish between pending and running states.
 
     Returns
     -------
@@ -535,7 +585,7 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
             job_name = job_name.split("/")[-1]
             logger.info(f"kubectl retry job_name: {job_name}")
             if job_name:
-                result = await check_k8s_job_status(job_name, retry_label_lookup=False)
+                result = await check_k8s_job_status(job_name, retry_label_lookup=False, check_pod_phase=check_pod_phase)
                 logger.info(f"kubectl retry result: {result}")
                 # If still no status after retry, treat as Running
                 if result and result[0] is None:
@@ -543,7 +593,7 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
                     return "Running", job_name
                 return result if result else ("Running", job_name)
         
-        # Job exists but has no conditions - verify it exists and treat as Running
+        # Job exists but has no conditions - verify it exists and check pod status
         verify_cmd = [
             "kubectl",
             "get",
@@ -555,9 +605,28 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
         verify_result = await run_subprocess_cmds(command=verify_cmd)
         
         if verify_result and verify_result[0]:
-            # Job exists but no status conditions yet - it's running or pending
-            logger.info(f"{kjob_id}: Job exists but no status conditions yet, treating as Running")
-            return "Running", kjob_id
+            # Job exists but no status conditions yet
+            # Check if we should verify the pod phase
+            if check_pod_phase:
+                pod_phase = await check_pod_status(kjob_id)
+                
+                if pod_phase == "Running":
+                    logger.info(f"{kjob_id}: Job is active and pod is running")
+                    return "Running", kjob_id
+                elif pod_phase == "Pending":
+                    logger.info(f"{kjob_id}: Job is active but pod is pending (waiting for resources)")
+                    return "Pending", kjob_id
+                elif pod_phase in ["Succeeded", "Failed"]:
+                    logger.info(f"{kjob_id}: Pod has terminal status: {pod_phase}")
+                    return pod_phase, kjob_id
+                else:
+                    # Pod phase is Unknown or None - treat as Running for backward compatibility
+                    logger.info(f"{kjob_id}: Job exists, pod phase unknown, treating as Running")
+                    return "Running", kjob_id
+            else:
+                # Don't check pod phase - treat as Running
+                logger.info(f"{kjob_id}: Job exists but no status conditions yet, treating as Running")
+                return "Running", kjob_id
         else:
             # Job doesn't exist at all
             logger.warning(f"{kjob_id}: Job not found in cluster")
