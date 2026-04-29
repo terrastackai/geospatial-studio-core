@@ -754,7 +754,7 @@ async def submit_tune_job(
         elif k8_status == "Pending":
             status = "Pending"
         else:
-            status = "Failed" 
+            status = "Pending"
         logger.info(f"Tune job {ftune_job_id} submitted with status: {status}")
         return ftune_job_id, status, detail
 
