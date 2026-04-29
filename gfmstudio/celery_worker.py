@@ -93,6 +93,14 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
             f"{ftune_id}: Job status is None, assuming completed and cleaned up"
         )
         return "Completed"
+    
+    # Handle Unknown status (job/pod not found - likely deleted after completion)
+    if k8s_job_status == "Unknown":
+        # Job and pods not found - resources were cleaned up after completion
+        logger.info(
+            f"{ftune_id}: Job status is Unknown (resources deleted), assuming completed and cleaned up"
+        )
+        return "Completed"
 
     if k8s_job_status in ["Complete", "Failed"]:
         # Job is done
