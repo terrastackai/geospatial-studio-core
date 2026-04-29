@@ -44,13 +44,10 @@ ENV PATH=/opt/miniconda/bin:$PATH
 ENV PROJ_LIB=/opt/miniconda/share/proj/
 ENV USE_PYGEOS="0"
 
-
-# # Build section from pipelines components
-# FROM conda_geospatial_env AS pipeline_processor_image
 USER root
 
 RUN pip install --upgrade pip
-RUN pip install ipython nbformat pg8000 sqlalchemy
+RUN pip install ipython nbformat pg8000 sqlalchemy flask requests
 
 ADD requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt \
@@ -61,6 +58,7 @@ RUN mkdir /pipeline
 ########## Adding core general libraries
 COPY ./general_libraries/gfm_logger /pipeline/gfm_logger
 COPY ./general_libraries/gfm_data_processing /pipeline/gfm_data_processing
+COPY ./general_libraries/eventing /pipeline/eventing
 COPY ./general_libraries/orchestrate_wrapper /pipeline/
 
 ########## Adding specific processor scripts
@@ -111,6 +109,13 @@ USER 10001
 WORKDIR "/pipeline/"
 
 ADD ./general_libraries/orchestrate_wrapper/orchestrate_wrapper.py /pipeline/
+ADD ./general_libraries/orchestrate_wrapper/knative_orchestrate_wrapper.py /pipeline/
 
+# Expose port 8080 for event-driven mode (HTTP event handling)
+EXPOSE 8080
+
+# Default to database polling mode (original behavior)
+# Override CMD in Kubernetes/Knative manifests for event-driven mode:
+# - Polling mode: python /pipeline/orchestrate_wrapper.py
+# - Event-driven mode: python /pipeline/knative_orchestrate_wrapper.py
 CMD ["sh", "-c", "python /pipeline/orchestrate_wrapper.py"]
-

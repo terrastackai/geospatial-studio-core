@@ -2,6 +2,7 @@
 boto3==1.35.82
 botocore
 buildingregulariser
+cloudevents
 geopandas
 geoserver-rest==2.10.0
 humanize
