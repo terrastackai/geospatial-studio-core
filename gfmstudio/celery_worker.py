@@ -72,7 +72,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
     max_wait = settings.KJOB_MAX_WAIT_SECONDS or 7200
 
     try:
-        k8s_job_status, _ = asyncio.run(check_k8s_job_status(ftune_id))
+        k8s_job_status, _ = asyncio.run(check_k8s_job_status(ftune_id, check_pod_phase=True))
     except Exception as exc:
         if "not found" in str(exc):
             # Job not found, consider it done (likely already completed and deleted)
@@ -93,6 +93,15 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
         logger.info(f"{ftune_id}: Job finished with status: {k8s_job_status}")
         return k8s_job_status
     
+    # Update database status based on pod phase
+    if k8s_job_status == "Running":
+        # Pod is actually running - update database to In_progress
+        try:
+            from gfmstudio.fine_tuning.utils.webhook_event_handlers import update_tune_status_if_pending
+            asyncio.run(update_tune_status_if_pending(ftune_id, "In_progress"))
+        except Exception as e:
+            logger.warning(f"{ftune_id}: Failed to update status to In_progress: {e}")
+
     # Job still running, retry with exponential backoff
     # countdown: 30s, 60s, 120s, 240s, 480s, 960s (max with default 600s setting)
     countdown = min(2 ** self.request.retries * 30, max_wait)
