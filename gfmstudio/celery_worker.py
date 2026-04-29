@@ -94,12 +94,9 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
         raise self.retry(exc=exc, countdown=min(2**self.request.retries * 30, max_wait))
 
     # Handle None status (job not found after retries)
-    if k8s_job_status is None:
-        # Job doesn't exist - either completed and deleted, or never created
-        logger.debug(
-            f"{ftune_id}: Job status is None, assuming completed and cleaned up"
-        )
-        return "Completed"
+    if k8s_job_status  in ["Error","Failed"]:  
+        logger.warning(f"{ftune_id}: Job never appeared → marking Failed")
+        return "Failed"
     
     # Handle Unknown status (job/pod not found - likely deleted after completion)
     if k8s_job_status == "Unknown":

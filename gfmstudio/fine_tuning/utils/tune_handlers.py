@@ -754,7 +754,7 @@ async def submit_tune_job(
         elif k8_status == "Pending":
             status = "Pending"
         else:
-            status = k8_status or "Pending"
+            status = "Failed" 
         logger.info(f"Tune job {ftune_job_id} submitted with status: {status}")
         return ftune_job_id, status, detail
 
@@ -783,7 +783,7 @@ async def _submit_via_celery(tune_id,config_path,runtime_image) -> str:
         return job_status
     except Exception as e:
         logger.debug(f"{tune_id}: Job creation in progress: {e}")
-    return "Pending"
+        return "Error"
         
 async def _submit_direct(tune_id, config_path, runtime_image) -> str:
     _, updated_status = await deploy_tuning_job(
@@ -792,4 +792,4 @@ async def _submit_direct(tune_id, config_path, runtime_image) -> str:
         ftuning_runtime_image=runtime_image,
         tune_type=schemas.TuneOptionEnum.K8_JOB,
     )
-    return updated_status or "Pending"
+    return updated_status
