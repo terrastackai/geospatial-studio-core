@@ -82,21 +82,17 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
                 f"{ftune_id}: Job not found, assuming completed and cleaned up"
             )
             return "Completed"
-        if "Error" in str(exc):
-             # Job not found, consider it done (likely already completed and deleted)
-            logger.debug(
-                f"{ftune_id}: Unable to created the job {exc}"
-            )
-            return "Failed"
-        # Unexpected error (network issue, kubectl auth timeout, etc.)
-        # Retry with exponential backoff for transient issues
+        # Unexpected error, retry with exponential backoff
         logger.warning(f"{ftune_id}: Error checking job status, will retry: {exc}")
         raise self.retry(exc=exc, countdown=min(2**self.request.retries * 30, max_wait))
 
     # Handle None status (job not found after retries)
-    if k8s_job_status  in ["Error","Failed"]:  
-        logger.warning(f"{ftune_id}: Job never appeared → marking Failed")
-        return "Failed"
+    if k8s_job_status is None:
+        # Job doesn't exist - either completed and deleted, or never created
+        logger.debug(
+            f"{ftune_id}: Job status is None, assuming completed and cleaned up"
+        )
+        return "Completed"
     
     # Handle Unknown status (job/pod not found - likely deleted after completion)
     if k8s_job_status == "Unknown":

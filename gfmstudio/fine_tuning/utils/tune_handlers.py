@@ -4,7 +4,6 @@
 
 """Helper functions for tune submission and management."""
 
-import asyncio
 import base64
 import logging
 import os
@@ -16,7 +15,6 @@ import yaml
 from asyncer import asyncify
 from fastapi import HTTPException
 from jinja2 import BaseLoader, Environment, runtime
-from gfmstudio.fine_tuning.core import kubernetes
 from sqlalchemy.orm import Session
 
 
@@ -41,8 +39,6 @@ from gfmstudio.fine_tuning.core.tuning_config_utils import (
 )
 from gfmstudio.fine_tuning.models import BaseModels, GeoDataset, Tunes, TuneTemplate
 from gfmstudio.fine_tuning.utils.geoserver_handlers import convert_to_geoserver_sld
-from gfmstudio.fine_tuning.core.kubernetes import check_k8s_job_status
-from gfmstudio.celery_worker import deploy_tuning_job_celery_task
 
 tune_crud = crud.ItemCrud(model=Tunes)
 from gfmstudio.common.api import crud, utils
@@ -709,12 +705,14 @@ def get_runtime_image(data_in: schemas.TuneSubmitIn, created_tune) -> str:
             detail="Task must be configured with a valid runtime image",
         )
 
-    return runtime_image  
+    return runtime_image
+
 
 async def submit_tune_job(
     tune_id: str,
-    config_path:str,
-    runtime_image:str) -> Tuple[Optional[str], str, Optional[Dict[str, str]]]:
+    config_path: str,
+    runtime_image: str,
+) -> Tuple[Optional[str], str, Optional[Dict[str, str]]]:
     """Submit tune job for execution.
 
     Parameters
@@ -731,65 +729,77 @@ async def submit_tune_job(
     Tuple[Optional[str], str, Optional[Dict[str, str]]]
         (job_id, status, error_detail)
     """
-
-    ftune_job_id = f"kjob-{tune_id}".lower()
-    status ="Pending"
-    detail =None
+    ftune_job_id = None
+    status = "Pending"
+    detail = None
 
     try:
         if settings.CELERY_TASKS_ENABLED:
-            job_status = await _submit_via_celery(tune_id,config_path,runtime_image)
+            # Import here to avoid circular dependency
+            from gfmstudio.celery_worker import deploy_tuning_job_celery_task
+            
+            # Submit via Celery - job creation happens in background
+            result = deploy_tuning_job_celery_task.apply_async(
+                kwargs={
+                    "ftune_id": tune_id,
+                    "ftune_config_file": config_path,
+                    "ftuning_runtime_image": runtime_image,
+                    "tune_type": schemas.TuneOptionEnum.K8_JOB,
+                },
+                task_id=tune_id,
+            )
+            
+            # Wait briefly to check if job creation succeeded or failed immediately
+            try:
+                job_result = result.get(timeout=5)  # Wait up to 5 seconds
+                ftune_job_id, job_status = job_result
+                
+                # If job creation failed, set status to Error/Failed
+                if job_status == "Error":
+                    status = "Failed"
+                else:
+                    # Job created successfully, keep as Pending until pod runs
+                    ftune_job_id = f"kjob-{tune_id}".lower()
+                    status = "Pending"
+            except Exception as e:
+                # Timeout or other error - assume job is being created
+                logger.debug(f"{tune_id}: Job creation in progress: {e}")
+                ftune_job_id = f"kjob-{tune_id}".lower()
+                status = "Pending"
         else:
-            job_status = await _submit_direct(tune_id,config_path,runtime_image)
-        # Handle immediate failure
-        if job_status =="Error":
-            return ftune_job_id, "Failed",None
-        # Give K8s a moment to register the new Job object 
-        if job_status != "Error":
-            await asyncio.sleep(1)
-        # Resolve actual runtime state from Kubernetes
-        k8_status,_ = await check_k8s_job_status(tune_id)
-        if k8_status == "Running":
-            status = "In_progress"
-        elif k8_status == "Pending":
-            status = "Pending"
-        else:
-            status = "Pending"
+            # Submit directly
+            ftune_job_id, updated_status = await deploy_tuning_job(
+                ftune_id=tune_id,
+                ftune_config_file=config_path,
+                ftuning_runtime_image=runtime_image,
+                tune_type=schemas.TuneOptionEnum.K8_JOB,
+            )
+            
+            # If job creation failed, return Error status immediately
+            if updated_status == "Error":
+                status = "Failed"
+            # Check actual pod status to determine if truly in progress
+            elif updated_status == "In_progress":
+                from gfmstudio.fine_tuning.core.kubernetes import check_k8s_job_status
+                k8s_status, _ = await check_k8s_job_status(tune_id, check_pod_phase=True)
+                
+                if k8s_status == "Running":
+                    status = "In_progress"
+                elif k8s_status == "Pending":
+                    status = "Pending"
+                else:
+                    # For other statuses (Complete, Failed, None), use the updated_status
+                    status = updated_status
+            else:
+                status = updated_status or "Submitted"
+
         logger.info(f"Tune job {ftune_job_id} submitted with status: {status}")
-        return ftune_job_id, status, detail
 
     except Exception:
         message = "Tune entry saved, but job submission failed"
         logger.exception(message)
         detail = {"info": message}  # {"error": str(exc)}
         status = "Failed"
+
     return ftune_job_id, status, detail
 
-async def _submit_via_celery(tune_id,config_path,runtime_image) -> str:
-    result =  deploy_tuning_job_celery_task.apply_async(
-        kwargs={
-            "ftune_id":tune_id,
-            "ftune_config_file":config_path,
-            "ftuning_runtime_image":runtime_image,
-            "tune_type":schemas.TuneOptionEnum.K8_JOB,},
-        task_id=tune_id,
-
-    )
-
-    try:
-        # Offload the blocking .get() to a thread pool
-        loop = asyncio.get_running_loop()
-        _, job_status = await loop.run_in_executor(None, partial(result.get, timeout=5))
-        return job_status
-    except Exception as e:
-        logger.debug(f"{tune_id}: Job creation in progress: {e}")
-        return "Error"
-        
-async def _submit_direct(tune_id, config_path, runtime_image) -> str:
-    _, updated_status = await deploy_tuning_job(
-        ftune_id=tune_id,
-        ftune_config_file=config_path,
-        ftuning_runtime_image=runtime_image,
-        tune_type=schemas.TuneOptionEnum.K8_JOB,
-    )
-    return updated_status

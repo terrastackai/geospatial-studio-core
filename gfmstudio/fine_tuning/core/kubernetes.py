@@ -502,14 +502,10 @@ async def get_pod_phase(job_name: str) -> str | None:
             "-l",
             f"job-name={job_name}",
             "-o",
-            "jsonpath={.items[*].status.phase}",
+            "jsonpath={.items[0].status.phase}",
         ]
         
         result = await run_subprocess_cmds(command=command)
-        if not result or not result[0].strip():
-            # No pods found yet? This is normal during the first 1-2 seconds.
-            logger.debug(f"{job_name}: No pods found yet, likely still initializing.")
-            return "Pending"
         return result[0].strip() if result and result[0] else None
 
     except Exception as e:
@@ -565,7 +561,7 @@ async def get_k8s_status(job_name: str) -> str:
     pod_phase = await get_pod_phase(job_name)
     if pod_phase:
         return pod_phase
-    return "Pending"
+    return "Unknown"
 
 async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
     """Function to check Kubernetes job status
