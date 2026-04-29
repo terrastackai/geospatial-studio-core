@@ -18,7 +18,6 @@ from jinja2 import BaseLoader, Environment, runtime
 from sqlalchemy.orm import Session
 
 
-from gfmstudio.celery_worker import deploy_tuning_job_celery_task
 from gfmstudio.common.api import crud
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning import schemas
@@ -736,6 +735,9 @@ async def submit_tune_job(
 
     try:
         if settings.CELERY_TASKS_ENABLED:
+            # Import here to avoid circular dependency
+            from gfmstudio.celery_worker import deploy_tuning_job_celery_task
+            
             # Submit via Celery - job creation happens in background
             result = deploy_tuning_job_celery_task.apply_async(
                 kwargs={
@@ -800,37 +802,4 @@ async def submit_tune_job(
         status = "Failed"
 
     return ftune_job_id, status, detail
-
-async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
-    """Update tune status if current status is Pending.
-    
-    This is used by the monitoring task to update status when pod starts running.
-    
-    Parameters
-    ----------
-    tune_id : str
-        The tune ID to update
-    new_status : str
-        The new status to set (e.g., "In_progress")
-    db : Session, optional
-        Database session, by default None
-    """
-    if db is None:
-        db_gen = utils.get_db()
-        session = await anext(db_gen)
-    else:
-        session = db
-    
-    try:
-        tune = tune_crud.get_by_id(db=session, item_id=tune_id)
-        if tune and tune.status == "Pending":
-            tune_crud.update(
-                db=session,
-                item_id=tune_id,
-                item={"status": new_status},
-                protected=False,
-            )
-            logger.info(f"{tune_id}: Updated status from Pending to {new_status}")
-    except Exception as e:
-        logger.warning(f"{tune_id}: Failed to update status: {e}")
 

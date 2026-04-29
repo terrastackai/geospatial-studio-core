@@ -514,6 +514,19 @@ async def get_pod_phase(job_name: str) -> str | None:
         return None
 
 async def get_job_conditions(job_name: str) -> str | None:
+    """
+    Get the conditions of a Kubernetes job.
+    Parameters
+    ----------
+    job_name : str
+        The name of the job to check.
+    Returns
+    -------
+    str
+        The conditions of the job.
+    None
+        If the job has no conditions.
+    """
     try:
         cmd =[
             "kubectl",

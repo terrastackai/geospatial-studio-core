@@ -18,6 +18,7 @@ from gfmstudio.fine_tuning.core.kubernetes import (
 from gfmstudio.fine_tuning.utils.webhook_event_handlers import (
     handle_dataset_factory_webhooks,
     handle_fine_tuning_webhooks,
+    update_tune_status,
 )
 from gfmstudio.inference.services import (
     invoke_cancel_inference_handler,
@@ -25,9 +26,6 @@ from gfmstudio.inference.services import (
 )
 from gfmstudio.inference.v2.services import invoke_inference_v2_pipelines_handler
 from gfmstudio.log import logger
-from gfmstudio.fine_tuning.utils.tune_handlers import (
-    update_tune_status,
-)
 INF_SERVICE_NAME = "inference_gateway"
 FT_SERVICE_NAME = "geoft"
 celery_app = Celery(
