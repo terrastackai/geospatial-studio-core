@@ -502,10 +502,14 @@ async def get_pod_phase(job_name: str) -> str | None:
             "-l",
             f"job-name={job_name}",
             "-o",
-            "jsonpath={.items[0].status.phase}",
+            "jsonpath={.items[*].status.phase}",
         ]
         
         result = await run_subprocess_cmds(command=command)
+        if not result or not result[0].strip():
+            # No pods found yet? This is normal during the first 1-2 seconds.
+            logger.debug(f"{job_name}: No pods found yet, likely still initializing.")
+            return "Pending"
         return result[0].strip() if result and result[0] else None
 
     except Exception as e:

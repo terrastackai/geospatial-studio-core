@@ -744,6 +744,9 @@ async def submit_tune_job(
         # Handle immediate failure
         if job_status =="Error":
             return ftune_job_id, "Failed",None
+        # Give K8s a moment to register the new Job object 
+        if job_status != "Error":
+            await asyncio.sleep(1)
         # Resolve actual runtime state from Kubernetes
         k8_status,_ = await check_k8s_job_status(tune_id)
         if k8_status == "Running":
