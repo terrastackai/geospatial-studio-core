@@ -565,7 +565,7 @@ async def get_k8s_status(job_name: str) -> str:
     pod_phase = await get_pod_phase(job_name)
     if pod_phase:
         return pod_phase
-    return "Unknown"
+    return "Pending"
 
 async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
     """Function to check Kubernetes job status
