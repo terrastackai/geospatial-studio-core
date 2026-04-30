@@ -30,6 +30,7 @@ if config.config_file_name is not None:
 
 from gfmstudio.common.db import Base  # noqa: E402
 from gfmstudio.fine_tuning.models import *  # noqa: F401 E402 F403
+from gfmstudio.groups.models import *  # noqa: F401 E402 F403
 
 # add your model's MetaData object here
 # for 'autogenerate' support

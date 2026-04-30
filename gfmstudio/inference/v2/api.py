@@ -24,11 +24,14 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from sse_starlette import EventSourceResponse
 from terrakit import DataConnector
 from terrakit.download.geodata_utils import list_data_connectors
+
+from gfmstudio.groups.models import ArtifactType
+from gfmstudio.groups.visibility import build_visibility_filter
 
 from gfmstudio.amo.schemas import OnboardModelRequest
 from gfmstudio.auth.authorizer import auth_handler
@@ -246,14 +249,19 @@ async def list_models(
     search_filters = {}
     if internal_name:
         search_filters["internal_name"] = internal_name
+    
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(Model, user, ArtifactType.model, db)
+    
     count, items = model_crud.get_all(
         db=db,
         limit=limit,
         skip=skip,
         search=search_filters,
         user=user,
-        shared=True,
         filters=filters,
+        filter_expr=visibility_filter,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -270,7 +278,9 @@ async def get_model(
     auth=Depends(auth_handler),
 ):
     user = auth[0]
-    item = model_crud.get_by_id(db, model_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(Model, user, ArtifactType.model, db)
+    item = db.query(Model).filter(and_(Model.id == model_id, visibility_filter)).first()
     if not item:
         raise HTTPException(status_code=404, detail="Model not found")
 
@@ -532,7 +542,6 @@ async def list_inferences(
 ):
     user = auth[0]
     filters = {}
-    filter_expr = None
     filter_expr_list = []
     if location:
         filters["location"] = location
@@ -546,8 +555,12 @@ async def list_inferences(
         filter_expr_list.append(
             Inference.inference_config["fine_tuning_id"].astext == str(tune_id).lower()
         )
-    if filter_expr_list:
-        filter_expr = and_(*filter_expr_list)
+    
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(Inference, user, ArtifactType.inference_run, db)
+    filter_expr_list.append(visibility_filter)
+    
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
 
     count, items = inference_crud.get_all(
         db=db,
@@ -556,6 +569,7 @@ async def list_inferences(
         user=user,
         filters=filters,
         filter_expr=filter_expr,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -572,7 +586,9 @@ async def retrieve_inference(
     auth=Depends(auth_handler),
 ):
     user = auth[0]
-    item = inference_crud.get_by_id(db, inference_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(Inference, user, ArtifactType.inference_run, db)
+    item = db.query(Inference).filter(and_(Inference.id == inference_id, visibility_filter)).first()
     if not item:
         raise HTTPException(status_code=404, detail="Inference not found")
 
