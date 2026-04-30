@@ -18,6 +18,7 @@ from gfmstudio.fine_tuning.core.kubernetes import (
 from gfmstudio.fine_tuning.utils.webhook_event_handlers import (
     handle_dataset_factory_webhooks,
     handle_fine_tuning_webhooks,
+    update_tune_status,
 )
 from gfmstudio.inference.services import (
     invoke_cancel_inference_handler,
@@ -25,7 +26,6 @@ from gfmstudio.inference.services import (
 )
 from gfmstudio.inference.v2.services import invoke_inference_v2_pipelines_handler
 from gfmstudio.log import logger
-
 INF_SERVICE_NAME = "inference_gateway"
 FT_SERVICE_NAME = "geoft"
 celery_app = Celery(
@@ -55,14 +55,14 @@ celery_app.conf.task_default_routing_key = INF_SERVICE_NAME
 )
 def deploy_tuning_job_celery_task(**kwargs):
     # Inject the monitoring task into kwargs to avoid circular import
-    kwargs['_monitor_task'] = monitor_k8_job_completion_task
+    kwargs["_monitor_task"] = monitor_k8_job_completion_task
     return asyncio.run(deploy_tuning_job(**kwargs))
 
 
 @celery_app.task(
     name="monitor_k8_job_completion_task",
     queue=FT_SERVICE_NAME,
-    bind=True,  # Bind to get access to self for retry
+    bind=True,
     max_retries=30,  # Allow many retries
     default_retry_delay=30,  # Start with 30 seconds
 )
@@ -72,31 +72,48 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
     max_wait = settings.KJOB_MAX_WAIT_SECONDS or 7200
 
     try:
-        k8s_job_status, _ = asyncio.run(check_k8s_job_status(ftune_id))
+        k8s_job_status, _ = asyncio.run(
+            check_k8s_job_status(ftune_id)
+        )
     except Exception as exc:
         if "not found" in str(exc):
             # Job not found, consider it done (likely already completed and deleted)
-            logger.debug(f"{ftune_id}: Job not found, assuming completed and cleaned up")
+            logger.debug(
+                f"{ftune_id}: Job not found, assuming completed and cleaned up"
+            )
             return "Completed"
         # Unexpected error, retry with exponential backoff
         logger.warning(f"{ftune_id}: Error checking job status, will retry: {exc}")
-        raise self.retry(exc=exc, countdown=min(2 ** self.request.retries * 30, max_wait))
-    
-    # Handle None status (job not found after retries)
+        raise self.retry(exc=exc, countdown=min(2**self.request.retries * 30, max_wait))
+
     if k8s_job_status is None:
-        # Job doesn't exist - either completed and deleted, or never created
-        logger.debug(f"{ftune_id}: Job status is None, assuming completed and cleaned up")
+        logger.debug(
+            f"{ftune_id}: Job status is None, assuming completed and cleaned up"
+        )
         return "Completed"
     
+    if k8s_job_status == "Unknown":
+        logger.info(
+            f"{ftune_id}: Job status is Unknown (resources deleted), assuming completed and cleaned up"
+        )
+        return "Completed"
+
     if k8s_job_status in ["Complete", "Failed"]:
-        # Job is done
         logger.info(f"{ftune_id}: Job finished with status: {k8s_job_status}")
         return k8s_job_status
-    
+
+    if k8s_job_status == "Running":
+        try:
+            asyncio.run(update_tune_status(ftune_id, "In_progress"))
+        except Exception as e:
+            logger.warning(f"{ftune_id}: Failed to update status to In_progress: {e}")
+
     # Job still running, retry with exponential backoff
     # countdown: 30s, 60s, 120s, 240s, 480s, 960s (max with default 600s setting)
-    countdown = min(2 ** self.request.retries * 30, max_wait)
-    logger.info(f"{ftune_id}: Job status={k8s_job_status}, will check again in {countdown}s")
+    countdown = min(2**self.request.retries * 30, max_wait)
+    logger.info(
+        f"{ftune_id}: Job status={k8s_job_status}, will check again in {countdown}s"
+    )
     raise self.retry(countdown=countdown)
 
 
@@ -105,7 +122,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
     queue=FT_SERVICE_NAME,
 )
 def deploy_hpo_tuning_celery_task(**kwargs):
-    kwargs['_monitor_task'] = monitor_k8_job_completion_task
+    kwargs["_monitor_task"] = monitor_k8_job_completion_task
     return asyncio.run(deploy_hpo_tuning_job(**kwargs))
 
 

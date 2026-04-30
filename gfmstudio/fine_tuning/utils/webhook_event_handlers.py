@@ -26,6 +26,39 @@ from gfmstudio.log import logger
 tune_crud = crud.ItemCrud(model=Tunes)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 
+async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
+    """Update tune status if current status is Pending.
+    
+    This is used by the monitoring task to update status when pod starts running.
+    
+    Parameters
+    ----------
+    tune_id : str
+        The tune ID to update
+    new_status : str
+        The new status to set (e.g., "In_progress")
+    db : Session, optional
+        Database session, by default None
+    """
+    if db is None:
+        db_gen = utils.get_db()
+        session = await anext(db_gen)
+    else:
+        session = db
+    
+    try:
+        tune = tune_crud.get_by_id(db=session, item_id=tune_id)
+        if tune and tune.status == "Pending":
+            tune_crud.update(
+                db=session,
+                item_id=tune_id,
+                item={"status": new_status},
+                protected=False,
+            )
+            logger.info(f"{tune_id}: Updated status from Pending to {new_status}")
+    except Exception as e:
+        logger.warning(f"{tune_id}: Failed to update status: {e}")
+
 
 async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
     """Function that checks status of job and if in terminal state, deletes the job, pvc, configMap
