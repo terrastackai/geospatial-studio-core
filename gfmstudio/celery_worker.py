@@ -62,7 +62,7 @@ def deploy_tuning_job_celery_task(**kwargs):
 @celery_app.task(
     name="monitor_k8_job_completion_task",
     queue=FT_SERVICE_NAME,
-    bind=True,  # Bind to get access to self for retry
+    bind=True,
     max_retries=30,  # Allow many retries
     default_retry_delay=30,  # Start with 30 seconds
 )
@@ -86,30 +86,23 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
         logger.warning(f"{ftune_id}: Error checking job status, will retry: {exc}")
         raise self.retry(exc=exc, countdown=min(2**self.request.retries * 30, max_wait))
 
-    # Handle None status (job not found after retries)
     if k8s_job_status is None:
-        # Job doesn't exist - either completed and deleted, or never created
         logger.debug(
             f"{ftune_id}: Job status is None, assuming completed and cleaned up"
         )
         return "Completed"
     
-    # Handle Unknown status (job/pod not found - likely deleted after completion)
     if k8s_job_status == "Unknown":
-        # Job and pods not found - resources were cleaned up after completion
         logger.info(
             f"{ftune_id}: Job status is Unknown (resources deleted), assuming completed and cleaned up"
         )
         return "Completed"
 
     if k8s_job_status in ["Complete", "Failed"]:
-        # Job is done
         logger.info(f"{ftune_id}: Job finished with status: {k8s_job_status}")
         return k8s_job_status
 
-    # Update database status based on pod phase
     if k8s_job_status == "Running":
-        # Pod is actually running - update database to In_progress
         try:
             asyncio.run(update_tune_status(ftune_id, "In_progress"))
         except Exception as e:
