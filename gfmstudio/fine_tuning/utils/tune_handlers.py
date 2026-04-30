@@ -11,6 +11,7 @@ import random
 import string
 from typing import Any, Dict, Optional, Tuple
 
+import asyncio
 import yaml
 from asyncer import asyncify
 from fastapi import HTTPException
@@ -749,7 +750,8 @@ async def submit_tune_job(
             
             # Wait briefly to check if job creation succeeded or failed immediately
             try:
-                job_result = result.get(timeout=5)  # Wait up to 5 seconds
+                # job_result = result.get(timeout=5)  # Wait up to 5 seconds
+                job_result = await asyncio.to_thread(result.get,timeout=5)
                 ftune_job_id, job_status = job_result
                 
                 # If job creation failed, set status to Error/Failed
