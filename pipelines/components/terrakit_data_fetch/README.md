@@ -26,6 +26,45 @@ docker push quay.io/geospatial-studio/template_process:v0.1.0
 rm -r  gfm_logger gfm_data_processing orchestrate_wrapper ./*.cwl ./*.job.yaml terrakit_data_fetch.yaml
 ```
 
+## Caching Feature
+
+The terrakit_data_fetch component now includes intelligent caching to significantly improve performance for repeated queries.
+
+### How It Works
+
+1. **Cache Check**: Before fetching from Terrakit, checks if data exists in cache
+2. **Cache Hit**: Copies (or hardlinks) files from `/data/cache` to task folder (~2-5 seconds)
+3. **Cache Miss**: Fetches from Terrakit, processes, and caches results (~30-60 seconds)
+4. **Performance**: 10-30x faster for repeated queries with same spatial-temporal parameters
+
+### Configuration
+
+Add these environment variables to your `values.yaml`:
+
+```yaml
+- name: TERRAKIT_CACHE_ENABLED
+  value: "true"
+- name: TERRAKIT_CACHE_DIR
+  value: "/data/cache"  # Uses existing shared PVC
+- name: TERRAKIT_CACHE_TTL_DAYS
+  value: "30" # Optional
+- name: TERRAKIT_CACHE_MAX_SIZE_GB
+  value: "400"  # Optional size limit
+```
+
+### Management
+
+```bash
+# Monitor cache size
+kubectl exec -it <pod-name> -- du -sh /data/cache
+
+# Clear cache
+kubectl exec -it <pod-name> -- rm -rf /data/cache/*
+
+# Disable cache temporarily
+kubectl set env deployment/terrakit-data-fetch TERRAKIT_CACHE_ENABLED=false
+```
+
 ## Deploy the process component
 To deploy the component to OpenShift you will use the deployment script in the folder.  In the deployment script you will need to:
 
