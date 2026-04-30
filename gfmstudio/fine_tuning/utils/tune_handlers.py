@@ -22,7 +22,7 @@ from gfmstudio.common.api import crud
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning import schemas
 from gfmstudio.fine_tuning.core import object_storage, tunes
-from gfmstudio.fine_tuning.core.kubernetes import deploy_tuning_job
+from gfmstudio.fine_tuning.core.kubernetes import(deploy_tuning_job,check_k8s_job_status) 
 from gfmstudio.fine_tuning.core.schema import TuneTemplateParameters
 from gfmstudio.fine_tuning.core.tuning_config_utils import (
     convert_to_jinja2_compatible_braces,
@@ -39,6 +39,7 @@ from gfmstudio.fine_tuning.core.tuning_config_utils import (
 )
 from gfmstudio.fine_tuning.models import BaseModels, GeoDataset, Tunes, TuneTemplate
 from gfmstudio.fine_tuning.utils.geoserver_handlers import convert_to_geoserver_sld
+from gfmstudio.celery_worker import deploy_tuning_job_celery_task
 
 tune_crud = crud.ItemCrud(model=Tunes)
 from gfmstudio.common.api import crud, utils
@@ -734,10 +735,7 @@ async def submit_tune_job(
     detail = None
 
     try:
-        if settings.CELERY_TASKS_ENABLED:
-            # Import here to avoid circular dependency
-            from gfmstudio.celery_worker import deploy_tuning_job_celery_task
-            
+        if settings.CELERY_TASKS_ENABLED:            
             # Submit via Celery - job creation happens in background
             result = deploy_tuning_job_celery_task.apply_async(
                 kwargs={
@@ -780,7 +778,6 @@ async def submit_tune_job(
                 status = "Failed"
             # Check actual pod status to determine if truly in progress
             elif updated_status == "In_progress":
-                from gfmstudio.fine_tuning.core.kubernetes import check_k8s_job_status
                 k8s_status, _ = await check_k8s_job_status(tune_id, check_pod_phase=True)
                 
                 if k8s_status == "Running":
