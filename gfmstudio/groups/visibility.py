@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from sqlalchemy import or_, select
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import Session
 
 from gfmstudio.config import settings
@@ -66,7 +66,7 @@ def build_visibility_filter(
         # Condition 2: Artifact is system-wide
         model_class.created_by == settings.DEFAULT_SYSTEM_USER,
         # Condition 3: Artifact is shared with a group the user belongs to
-        model_class.id.in_(shared_artifacts_subquery),
+        cast(model_class.id, String).in_(shared_artifacts_subquery),
     )
 
     return visibility_filter

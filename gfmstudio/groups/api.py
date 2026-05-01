@@ -644,7 +644,7 @@ async def grant_artifact_permission(
 async def revoke_artifact_permission(
     group_id: UUID,
     artifact_type: ArtifactType,
-    artifact_id: UUID,
+    artifact_id: str,
     db: Session = Depends(utils.get_db),
     auth=Depends(auth_handler),
 ):
@@ -657,7 +657,7 @@ async def revoke_artifact_permission(
         The group ID
     artifact_type : ArtifactType
         The type of artifact
-    artifact_id : UUID
+    artifact_id : str
         The artifact ID
     db : Session
         Database session

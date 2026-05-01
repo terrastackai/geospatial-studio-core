@@ -106,7 +106,7 @@ class ArtifactPermission(Base):
         primary_key=True,
         nullable=False,
     )
-    artifact_id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    artifact_id = Column(String(255), primary_key=True, nullable=False)
     granted_by = Column(String(255), nullable=False)
     granted_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
