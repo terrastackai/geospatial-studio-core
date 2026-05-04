@@ -20,6 +20,10 @@ class UserRequestSchema(BaseModel):
     organization_id: Optional[str] = Field(default=None)
     extra_data: Optional[str] = Field(default=None)
 
+    @field_validator("email")
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
 
 class APIKeyRequestSchema(BaseModel):
     value: str

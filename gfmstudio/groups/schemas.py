@@ -35,7 +35,7 @@ class ArtifactPermissionGrant(BaseModel):
     """Schema for granting artifact access to a group."""
 
     artifact_type: ArtifactType
-    artifact_id: UUID
+    artifact_id: str
 
 
 class MemberOut(BaseModel):
@@ -53,7 +53,7 @@ class ArtifactPermissionOut(BaseModel):
 
     group_id: UUID
     artifact_type: ArtifactType
-    artifact_id: UUID
+    artifact_id: str
     granted_by: str
     granted_at: datetime
 
