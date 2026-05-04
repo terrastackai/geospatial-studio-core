@@ -6,7 +6,7 @@ import base64
 import datetime
 import functools
 import json
-from typing import Union
+from typing import Any, Optional, Union
 
 import requests
 from cachetools import TTLCache
@@ -14,6 +14,7 @@ from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from redis.exceptions import ConnectionError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from gfmstudio.auth import utils
@@ -46,7 +47,7 @@ def get_redis_auth_key(api_key: str) -> str:
 
 
 @functools.lru_cache
-def get_auth_config(well_known_url: str = None):
+def get_auth_config(well_known_url: Optional[str] = None):
     well_known_url = (
         well_known_url
         or "https://geostudio.verify.ibm.com/oidc/endpoint/default/.well-known/openid-configuration"  # noqa: E501
@@ -75,9 +76,17 @@ def exchange_code_for_token(code, redirect_uri):
     return access_token
 
 
+def normalize_email(email: str | None) -> str | None:
+    if email is None:
+        return None
+    return email.strip().lower()
+
+
 async def get_api_key(
-    api_key_value: str = None, user_email: str = None, db: Session = None
-) -> Union[dict[str, str], None]:
+    api_key_value: Optional[str] = None,
+    user_email: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> Optional[list[dict[str, Any]]]:
     """Fetch API Key from data store.
 
     Parameters
@@ -91,12 +100,12 @@ async def get_api_key(
 
     Returns
     -------
-    Union[dict[str, str], None]
-        Dict or None if APIKey does not exist.
+    Optional[list[dict[str, Any]]]
+        List of API key records or None if not found.
 
     """
     if not settings.AUTH_ENABLED:
-        user_email = settings.DEFAULT_SYSTEM_USER
+        user_email = normalize_email(settings.DEFAULT_SYSTEM_USER)
 
     if (api_key_value or user_email) is None:
         raise TypeError(
@@ -104,13 +113,15 @@ async def get_api_key(
         )
 
     # 1. CACHE HIT (Fastest Path)
+    api_key_hash: Optional[str] = None
     if api_key_value:
         api_key_hash = hash_api_key(api_key_value)
         cache_key = get_redis_auth_key(api_key_hash)
         try:
-            cached_data_json = redis_client.get(cache_key)
-            if cached_data_json:
-                return [json.loads(cached_data_json)]
+            if redis_client:
+                cached_data_json = redis_client.get(cache_key)
+                if cached_data_json:
+                    return [json.loads(cached_data_json)]
         except (AttributeError, ConnectionError):
             logger.warning(
                 "❌ Redis client not initialized ... Api-key cache lookup skipped."
@@ -118,10 +129,10 @@ async def get_api_key(
 
     # CACHE MISS (Expensive, triggers DB lookup and decryption)
     session = db or next(utils.get_auth_db())
-    with session as db:
-        if api_key_value:
+    with session as db_session:
+        if api_key_value and api_key_hash:
             resp = apikey_crud.get_all(
-                db=db,
+                db=db_session,
                 filters={"hashed_key": api_key_hash},
                 ignore_user_check=True,
             )
@@ -131,7 +142,7 @@ async def get_api_key(
             if not resp:
                 # Backward compatibility
                 resp = apikey_crud.get_all(
-                    db=db,
+                    db=db_session,
                     filters={"value": api_key_value},
                     ignore_user_check=True,
                 )
@@ -156,7 +167,8 @@ async def get_api_key(
                 cache_key = get_redis_auth_key(api_key_hash)
 
                 try:
-                    redis_client.setex(cache_key, 60, cached_data.model_dump_json())
+                    if redis_client:
+                        redis_client.setex(cache_key, 60, cached_data.model_dump_json())
                 except (AttributeError, ConnectionError):
                     logger.warning(
                         "❌ Redis client not initialized ... Api-key caching skipped."
@@ -164,13 +176,18 @@ async def get_api_key(
 
                 return resp_obj
         elif user_email:
-            users = user_crud.get_all(
-                db=db,
-                filters={"email": user_email},
-                ignore_user_check=True,
+            normalized_email = normalize_email(user_email)
+            users = (
+                db_session.query(User)
+                .filter(
+                    func.lower(User.email) == normalized_email,
+                    User.deleted.isnot(True),
+                )
+                .order_by(User.created_at.desc())
+                .all()
             )
-            resp = users[0].apikeys
-            email = users[0].email
+            resp = users[0].apikeys if users else []
+            email = users[0].email if users else normalized_email
             if resp:
                 return [
                     {
@@ -199,7 +216,7 @@ def get_user_details(request: Request):
         logger.debug("Could not get token from oauth")
 
     try:
-        t = token.replace("Bearer ", "")
+        t = token.replace("Bearer ", "") if token else ""
         tC = json.loads(base64.b64decode(t.split(".")[1] + "=="))
         groups = tC.get("groupIds", [])
         user = tC["email"] if not user else user
@@ -215,6 +232,8 @@ async def get_user_from_headers(request: Request):
 
     if not settings.AUTH_ENABLED:
         email = settings.DEFAULT_SYSTEM_USER
+
+    email = normalize_email(email)
 
     if email:
         names = email.split("@")[0]
@@ -237,9 +256,9 @@ async def get_user_from_headers(request: Request):
 async def jwt_auth(
     request: Request,
     jwt_header: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
-) -> (Union[str, None], Union[str, None], list):
+) -> tuple[Optional[str], Optional[str], list]:
     if not settings.AUTH_ENABLED:
-        return settings.DEFAULT_SYSTEM_USER, None, None
+        return normalize_email(settings.DEFAULT_SYSTEM_USER), None, []
 
     if jwt_header:
         email, token, groups = await get_user_from_headers(request=request)
@@ -253,10 +272,10 @@ async def jwt_auth(
 
 async def api_key_auth(
     request: Request,
-    api_key: str = Security(api_key_header),
-) -> (Union[str, None], Union[str, None], list):
+    api_key: Optional[str] = Security(api_key_header),
+) -> tuple[Optional[str], Optional[str], list]:
     if not settings.AUTH_ENABLED:
-        return settings.DEFAULT_SYSTEM_USER, None, None
+        return normalize_email(settings.DEFAULT_SYSTEM_USER), None, []
 
     # Fetch API Key from data-store
     if api_key:
@@ -270,15 +289,28 @@ async def api_key_auth(
     )
 
 
-async def load_user(user: UserRequestSchema, db: Session = None):
+async def load_user(user: UserRequestSchema, db: Optional[Session] = None):
     """Load new users to the datastore."""
     session = db or next(utils.get_auth_db())
-    with session as db:
-        exiting_user = user_crud.get_all(
-            db=db, filters={"email": user.email}, ignore_user_check=True
+    with session as db_session:
+        normalized_email = normalize_email(user.email)
+        if not normalized_email:
+            return
+
+        exiting_user = (
+            db_session.query(User)
+            .filter(
+                func.lower(User.email) == normalized_email,
+                User.deleted.isnot(True),
+            )
+            .order_by(User.created_at.desc())
+            .all()
         )
         if not exiting_user:
-            user_crud.create(db=db, item=user, user=user.email)
+            normalized_user = user.model_copy(update={"email": normalized_email})
+            user_crud.create(
+                db=db_session, item=normalized_user, user=normalized_email
+            )
 
 
 async def auth_handler(

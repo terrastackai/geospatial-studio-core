@@ -14,7 +14,7 @@ from gfmstudio.auth.api_key_utils import apikey_expiry_date, generate_apikey
 
 firstname = input("Enter first name:")
 lastname = input("Enter last name:")
-email = input("Enter email:")
+email = input("Enter email:").strip().lower()
 user_id = str(uuid.uuid4())
 created_at = updated_at = datetime.now().isoformat()
 
