@@ -70,7 +70,7 @@ def _require_group_owner(group_id: UUID, user_email: str, db: Session) -> GroupM
         .filter(
             and_(
                 GroupMember.group_id == group_id,
-                GroupMember.user_email == user_email,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
             )
         )
         .first()
@@ -113,7 +113,7 @@ def _require_group_member(group_id: UUID, user_email: str, db: Session) -> Group
         .filter(
             and_(
                 GroupMember.group_id == group_id,
-                GroupMember.user_email == user_email,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
             )
         )
         .first()
@@ -211,7 +211,7 @@ async def list_groups(
     groups = (
         db.query(Group)
         .join(GroupMember)
-        .filter(GroupMember.user_email == user_email)
+        .filter(func.lower(GroupMember.user_email) == func.lower(user_email))
         .all()
     )
 
@@ -329,7 +329,7 @@ async def add_member(
         .filter(
             and_(
                 GroupMember.group_id == group_id,
-                GroupMember.user_email == member.user_email,
+                func.lower(GroupMember.user_email) == func.lower(member.user_email),
             )
         )
         .first()
@@ -383,7 +383,7 @@ async def remove_member(
         .filter(
             and_(
                 GroupMember.group_id == group_id,
-                GroupMember.user_email == user_email,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
             )
         )
         .first()
@@ -398,7 +398,7 @@ async def remove_member(
         .filter(
             and_(
                 GroupMember.group_id == group_id,
-                GroupMember.user_email == current_user_email,
+                func.lower(GroupMember.user_email) == func.lower(current_user_email),
             )
         )
         .first()
@@ -410,8 +410,11 @@ async def remove_member(
             detail="You must be a member of this group to perform this action",
         )
 
-    # Allow if user is owner OR removing themselves
-    if current_member.role != GroupRole.owner and user_email != current_user_email:
+    # Allow if user is owner OR removing themselves (case-insensitive email comparison)
+    if (
+        current_member.role != GroupRole.owner
+        and user_email.lower() != current_user_email.lower()
+    ):
         raise HTTPException(
             status_code=403,
             detail="Only group owners can remove other members",
@@ -462,7 +465,7 @@ async def update_member_role(
         .filter(
             and_(
                 GroupMember.group_id == group_id,
-                GroupMember.user_email == user_email,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
             )
         )
         .first()
@@ -479,7 +482,7 @@ async def update_member_role(
                 and_(
                     GroupMember.group_id == group_id,
                     GroupMember.role == GroupRole.owner,
-                    GroupMember.user_email != user_email,
+                    func.lower(GroupMember.user_email) != func.lower(user_email),
                 )
             )
             .scalar()
