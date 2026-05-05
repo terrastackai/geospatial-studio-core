@@ -26,6 +26,7 @@ from gfmstudio.inference.services import (
 )
 from gfmstudio.inference.v2.services import invoke_inference_v2_pipelines_handler
 from gfmstudio.log import logger
+
 INF_SERVICE_NAME = "inference_gateway"
 FT_SERVICE_NAME = "geoft"
 celery_app = Celery(
@@ -72,9 +73,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
     max_wait = settings.KJOB_MAX_WAIT_SECONDS or 7200
 
     try:
-        k8s_job_status, _ = asyncio.run(
-            check_k8s_job_status(ftune_id)
-        )
+        k8s_job_status, _ = asyncio.run(check_k8s_job_status(ftune_id))
     except Exception as exc:
         if "not found" in str(exc):
             # Job not found, consider it done (likely already completed and deleted)
@@ -91,7 +90,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
             f"{ftune_id}: Job status is None, assuming completed and cleaned up"
         )
         return "Completed"
-    
+
     if k8s_job_status == "Unknown":
         logger.info(
             f"{ftune_id}: Job status is Unknown (resources deleted), assuming completed and cleaned up"
