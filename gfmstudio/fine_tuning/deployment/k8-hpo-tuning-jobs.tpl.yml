@@ -49,14 +49,7 @@ spec:
       initContainers:
         - name: copy-config
           image: busybox
-          command:
-          - sh
-          - -c
-          - |
-            set -e
-            cp /config/config-train.yaml /app/config/
-            mkdir -p /data/output
-            chmod -R g+rwX /data/output
+          command: ['sh', 'c', 'cp /config/config-train.yaml /app/config/']
           volumeMounts:
             - name: config-volume
               mountPath: /config
@@ -90,7 +83,7 @@ spec:
               mountPath: /ftuning
             - name: dshm
               mountPath: /dev/shm
-          command: ["/bin/sh"]
+          command: ["/bin/bash"]
           args: ["-c", "/ftuning/ftuning.sh"]
           env:
             - name: HF_HOME
