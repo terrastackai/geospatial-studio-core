@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from typing import List, Union
+from typing import List, Optional, Union
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import and_, func
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import String, and_, cast, func
 from sqlalchemy.orm import Session
 
 from gfmstudio.auth.authorizer import auth_handler
@@ -22,14 +22,18 @@ from gfmstudio.groups.models import (
 from gfmstudio.groups.schemas import (
     ArtifactPermissionGrant,
     ArtifactPermissionOut,
+    ArtifactSharingDetail,
+    ArtifactSharingListResponse,
     GroupCreate,
     GroupMemberAdd,
     GroupOut,
+    GroupSharingInfo,
     MemberRoleUpdate,
 )
 from gfmstudio.inference.v2.models import Inference, Model
 
 router = APIRouter(prefix="/groups", tags=["Groups"])
+artifacts_router = APIRouter(prefix="/artifacts", tags=["Artifacts"])
 
 # Mapping of artifact types to their SQLAlchemy model classes
 ARTIFACT_TYPE_TO_MODEL = {
@@ -762,6 +766,328 @@ async def revoke_artifact_permission(
             status_code=404,
             detail="Artifact permission not found",
         )
+
+
+# ***************************************************
+# Artifact Sharing Visibility
+# ***************************************************
+@artifacts_router.get(
+    "/{artifact_type}/{artifact_id}/groups",
+    response_model=List[GroupSharingInfo],
+)
+async def list_artifact_groups(
+    artifact_type: ArtifactType,
+    artifact_id: Union[UUID, str],
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List all groups that an artifact is shared with.
+    
+    Authorization:
+    - Artifact owners can see all groups the artifact is shared with
+    - Non-owners can only see groups they are members of
+    
+    Parameters
+    ----------
+    artifact_type : ArtifactType
+        The type of artifact
+    artifact_id : Union[UUID, str]
+        The artifact ID (can be UUID or string)
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    List[GroupSharingInfo]
+        List of groups the artifact is shared with, including user's role if member
+    """
+    user_email = auth[0]
+    
+    # Get the model class for this artifact type
+    model_class = ARTIFACT_TYPE_TO_MODEL.get(artifact_type)
+    if not model_class:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid artifact type: {artifact_type}",
+        )
+    
+    # Verify artifact exists and check ownership
+    converted_id = _convert_artifact_id_for_query(artifact_id, model_class)
+    artifact = db.query(model_class).filter(model_class.id == converted_id).first()
+    
+    if not artifact:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Artifact not found: {artifact_type} with id {artifact_id}",
+        )
+    
+    # Check if user is the artifact owner
+    is_owner = (
+        hasattr(artifact, "created_by")
+        and artifact.created_by.lower() == user_email.lower()
+    )
+    
+    # Convert artifact_id to string for querying ArtifactPermission table
+    artifact_id_str = str(artifact_id) if isinstance(artifact_id, UUID) else artifact_id
+    
+    # Build query based on ownership
+    if is_owner:
+        # Owner can see all groups the artifact is shared with
+        # Use outer join to include user's role if they're a member
+        query = (
+            db.query(
+                ArtifactPermission,
+                Group.name.label("group_name"),
+                GroupMember.role.label("user_role"),
+            )
+            .join(Group, Group.id == ArtifactPermission.group_id)
+            .outerjoin(
+                GroupMember,
+                and_(
+                    GroupMember.group_id == ArtifactPermission.group_id,
+                    func.lower(GroupMember.user_email) == func.lower(user_email),
+                ),
+            )
+            .filter(
+                ArtifactPermission.artifact_type == artifact_type,
+                ArtifactPermission.artifact_id == artifact_id_str,
+            )
+        )
+    else:
+        # Non-owner can only see groups they're a member of
+        query = (
+            db.query(
+                ArtifactPermission,
+                Group.name.label("group_name"),
+                GroupMember.role.label("user_role"),
+            )
+            .join(Group, Group.id == ArtifactPermission.group_id)
+            .join(
+                GroupMember,
+                and_(
+                    GroupMember.group_id == ArtifactPermission.group_id,
+                    func.lower(GroupMember.user_email) == func.lower(user_email),
+                ),
+            )
+            .filter(
+                ArtifactPermission.artifact_type == artifact_type,
+                ArtifactPermission.artifact_id == artifact_id_str,
+            )
+        )
+    
+    results = query.all()
+    
+    # Format response
+    return [
+        GroupSharingInfo(
+            group_id=perm.group_id,
+            group_name=group_name,
+            granted_by=perm.granted_by,
+            granted_at=perm.granted_at,
+            user_role=user_role,
+        )
+        for perm, group_name, user_role in results
+    ]
+
+
+async def _list_group_artifacts_impl(
+    group_id: UUID,
+    artifact_type: Optional[ArtifactType],
+    limit: int,
+    offset: int,
+    db: Session,
+    auth: tuple,
+):
+    """
+    Internal implementation for listing group artifacts.
+    Handles both filtered (by type) and unfiltered queries.
+    
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    artifact_type : Optional[ArtifactType]
+        Optional artifact type filter
+    limit : int
+        Maximum number of results
+    offset : int
+        Pagination offset
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    ArtifactSharingListResponse
+        Paginated list of artifacts shared with the group
+    """
+    user_email = auth[0]
+    
+    # Verify user is a member of the group
+    _require_group_member(group_id, user_email, db)
+    
+    # Build base query filters
+    base_filters = [ArtifactPermission.group_id == group_id]
+    if artifact_type is not None:
+        base_filters.append(ArtifactPermission.artifact_type == artifact_type)
+    
+    # Get total count
+    total = (
+        db.query(func.count(ArtifactPermission.id))
+        .filter(*base_filters)
+        .scalar()
+    )
+    
+    # Get permissions with basic info (no joins yet)
+    permissions = (
+        db.query(ArtifactPermission)
+        .filter(*base_filters)
+        .order_by(ArtifactPermission.granted_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    
+    # Enrich with artifact details
+    # Group permissions by artifact type for efficient querying
+    artifacts_by_type = {}
+    for perm in permissions:
+        if perm.artifact_type not in artifacts_by_type:
+            artifacts_by_type[perm.artifact_type] = []
+        artifacts_by_type[perm.artifact_type].append(perm)
+    
+    # Fetch artifact details for each type
+    result_artifacts = []
+    for art_type, perms in artifacts_by_type.items():
+        model_class = ARTIFACT_TYPE_TO_MODEL.get(art_type)
+        if not model_class:
+            # Skip unknown artifact types
+            continue
+        
+        # Get artifact IDs for this type
+        artifact_ids = [perm.artifact_id for perm in perms]
+        
+        # Query artifacts of this type
+        artifacts = (
+            db.query(model_class)
+            .filter(cast(model_class.id, String).in_(artifact_ids))
+            .all()
+        )
+        
+        # Create lookup dict
+        artifact_lookup = {str(art.id): art for art in artifacts}
+        
+        # Build response objects
+        for perm in perms:
+            artifact = artifact_lookup.get(perm.artifact_id)
+            result_artifacts.append(
+                ArtifactSharingDetail(
+                    artifact_id=perm.artifact_id,
+                    artifact_type=perm.artifact_type,
+                    artifact_name=getattr(artifact, "name", None) if artifact else None,
+                    granted_by=perm.granted_by,
+                    granted_at=perm.granted_at,
+                    created_by=artifact.created_by if artifact else "unknown",
+                    created_at=artifact.created_at if artifact else perm.granted_at,
+                )
+            )
+    
+    return ArtifactSharingListResponse(
+        total=total,
+        limit=limit,
+        offset=offset,
+        artifacts=result_artifacts,
+    )
+
+
+@router.get("/{group_id}/artifacts", response_model=ArtifactSharingListResponse)
+async def list_group_artifacts_all(
+    group_id: UUID,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List all artifacts (of all types) shared with a group.
+    User must be a member of the group.
+    
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    limit : int
+        Maximum number of results (default: 100, max: 1000)
+    offset : int
+        Pagination offset (default: 0)
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    ArtifactSharingListResponse
+        Paginated list of all artifacts shared with the group
+    """
+    return await _list_group_artifacts_impl(
+        group_id=group_id,
+        artifact_type=None,
+        limit=limit,
+        offset=offset,
+        db=db,
+        auth=auth,
+    )
+
+
+@router.get(
+    "/{group_id}/artifacts/{artifact_type}",
+    response_model=ArtifactSharingListResponse,
+)
+async def list_group_artifacts_by_type(
+    group_id: UUID,
+    artifact_type: ArtifactType,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List artifacts of a specific type shared with a group.
+    User must be a member of the group.
+    
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    artifact_type : ArtifactType
+        The type of artifacts to list
+    limit : int
+        Maximum number of results (default: 100, max: 1000)
+    offset : int
+        Pagination offset (default: 0)
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    ArtifactSharingListResponse
+        Paginated list of artifacts of the specified type shared with the group
+    """
+    return await _list_group_artifacts_impl(
+        group_id=group_id,
+        artifact_type=artifact_type,
+        limit=limit,
+        offset=offset,
+        db=db,
+        auth=auth,
+    )
 
     db.delete(permission)
     db.commit()
