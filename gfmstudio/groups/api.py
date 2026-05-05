@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from typing import List
+from typing import List, Union
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,6 +40,70 @@ ARTIFACT_TYPE_TO_MODEL = {
     ArtifactType.task_template: TuneTemplate,
     ArtifactType.inference_run: Inference,
 }
+
+
+def _convert_artifact_id_for_query(
+    artifact_id: Union[UUID, str], model_class
+) -> Union[UUID, str]:
+    """
+    Convert artifact_id to the appropriate type for querying based on the model's ID column type.
+    
+    This function inspects the target model's ID column type and converts the artifact_id
+    accordingly:
+    - If the model uses UUID IDs and artifact_id is a string, attempts UUID conversion
+    - If the model uses string IDs and artifact_id is a UUID, converts to string
+    - Returns the artifact_id unchanged if already the correct type
+    
+    Parameters
+    ----------
+    artifact_id : Union[UUID, str]
+        The artifact ID to convert (can be UUID object or string)
+    model_class : type
+        The SQLAlchemy model class to query
+        
+    Returns
+    -------
+    Union[UUID, str]
+        The artifact_id converted to match the model's ID column type
+        
+    Examples
+    --------
+    >>> # For UUID-based model (e.g., Model, BaseModels)
+    >>> _convert_artifact_id_for_query("550e8400-e29b-41d4-a716-446655440000", Model)
+    UUID('550e8400-e29b-41d4-a716-446655440000')
+    
+    >>> # For string-based model (e.g., GeoDataset, Tunes)
+    >>> _convert_artifact_id_for_query(UUID("550e8400-e29b-41d4-a716-446655440000"), GeoDataset)
+    '550e8400-e29b-41d4-a716-446655440000'
+    """
+    from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
+    
+    # Get the ID column from the model's table
+    id_column = model_class.__table__.columns.get('id')
+    if id_column is None:
+        # Fallback: return artifact_id as-is if no ID column found
+        return artifact_id
+    
+    # Check if the column type is PostgreSQL UUID
+    is_uuid_column = isinstance(id_column.type, PostgresUUID)
+    
+    if is_uuid_column:
+        # Model expects UUID type - convert string to UUID if needed
+        if isinstance(artifact_id, str):
+            try:
+                return UUID(artifact_id)
+            except ValueError:
+                # Invalid UUID string - return as-is and let the query fail naturally
+                # This provides better error messages from the database
+                return artifact_id
+        # Already a UUID object
+        return artifact_id
+    else:
+        # Model expects string type - convert UUID to string if needed
+        if isinstance(artifact_id, UUID):
+            return str(artifact_id)
+        # Already a string
+        return artifact_id
 
 
 def _require_group_owner(group_id: UUID, user_email: str, db: Session) -> GroupMember:
@@ -593,8 +657,10 @@ async def grant_artifact_permission(
         )
 
     # Verify artifact exists and is owned by current user
+    # Convert artifact_id to the appropriate type for this model
+    converted_id = _convert_artifact_id_for_query(permission.artifact_id, model_class)
     artifact = (
-        db.query(model_class).filter(model_class.id == permission.artifact_id).first()
+        db.query(model_class).filter(model_class.id == converted_id).first()
     )
 
     if not artifact:
@@ -650,7 +716,7 @@ async def grant_artifact_permission(
 async def revoke_artifact_permission(
     group_id: UUID,
     artifact_type: ArtifactType,
-    artifact_id: str,
+    artifact_id: Union[UUID, str],
     db: Session = Depends(utils.get_db),
     auth=Depends(auth_handler),
 ):
@@ -663,8 +729,8 @@ async def revoke_artifact_permission(
         The group ID
     artifact_type : ArtifactType
         The type of artifact
-    artifact_id : str
-        The artifact ID
+    artifact_id : Union[UUID, str]
+        The artifact ID (can be UUID or string)
     db : Session
         Database session
     auth : tuple
@@ -675,6 +741,9 @@ async def revoke_artifact_permission(
     # Verify user is an owner
     _require_group_owner(group_id, user_email, db)
 
+    # Convert to string for querying ArtifactPermission table (which uses String column)
+    artifact_id_str = str(artifact_id) if isinstance(artifact_id, UUID) else artifact_id
+
     # Find the permission
     permission = (
         db.query(ArtifactPermission)
@@ -682,7 +751,7 @@ async def revoke_artifact_permission(
             and_(
                 ArtifactPermission.group_id == group_id,
                 ArtifactPermission.artifact_type == artifact_type,
-                ArtifactPermission.artifact_id == artifact_id,
+                ArtifactPermission.artifact_id == artifact_id_str,
             )
         )
         .first()
