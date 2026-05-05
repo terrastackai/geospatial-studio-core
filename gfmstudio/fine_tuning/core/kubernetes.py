@@ -543,7 +543,7 @@ async def get_job_conditions(job_name: str) -> str | None:
         logger.debug(f"Error checking job conditions: {e}")
         return None
 
-async def get_k8s_status(job_name: str) -> str:
+async def get_aggregate_job_and_pod_status(job_name: str) -> str:
     """Get the status of a Kubernetes job.
 
     Parameters
@@ -563,7 +563,7 @@ async def get_k8s_status(job_name: str) -> str:
         return pod_phase
     return "Unknown"
 
-async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
+async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
     """Function to check Kubernetes job status
     
     This function checks both the job status and optionally the pod phase to determine
@@ -590,7 +590,7 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
     await ensure_logged_in(f"kubectl get job --namespace={settings.NAMESPACE}")
 
     # Direct resolution via unified status function
-    status = await get_k8s_status(kjob_id)
+    status = await get_aggregate_job_and_pod_status(kjob_id)
 
     if status not in ["Running"]:
         return status, kjob_id
@@ -616,7 +616,7 @@ async def check_k8s_job_status(tune_id: str, retry_label_lookup=True):
             job_name = job_name.split("/")[-1]
             logger.info(f"kubectl retry job_name: {job_name}")
             if job_name:
-                result = await check_k8s_job_status(job_name, retry_label_lookup=False)
+                result = await check_tuning_task_status(job_name, retry_label_lookup=False)
                 logger.info(f"kubectl retry result: {result}")
                 # If still no status after retry, treat as Running
                 if result and result[0] is None:
@@ -792,7 +792,7 @@ async def collect_pod_logs(tune_id: str, retry_label_lookup=True):
                 job_name = job_name.split("/")[-1]
                 logger.info(f"kubectl retry job_name: {job_name}")
                 if job_name:
-                    result = await check_k8s_job_status(
+                    result = await check_tuning_task_status(
                         job_name, retry_label_lookup=False
                     )
                     logger.info(f"kubectl retry result: {result}")
