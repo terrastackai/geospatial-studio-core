@@ -122,25 +122,48 @@ def run_terratorch_inference():
             modality_tags = config["data"]["init_args"]["modalities"]
             ## Create a tmp folder, rename the tiffs to remove modality tag
             os.makedirs(tmp_folder, exist_ok=True)  # safer and won't error if exists
-            for filename in os.listdir(task_folder):
-                for modality_tag in modality_tags:
-                    if (
-                        "imputed" in filename.lower()
-                        and filename.lower().endswith((".tif", ".tiff"))
-                        and modality_tag in filename
-                    ):
-                        # Split filename by "_" and remove modality_tag
-                        parts = filename.split("_")
-                        new_parts = [part for part in parts if part != modality_tag]
-                        new_filename = "_".join(new_parts)
+            model_input_images = task_dict.get("model_input_images", {})
 
-                        # Build full paths
-                        old_path = os.path.join(task_folder, filename)
-                        new_path = os.path.join(tmp_folder, new_filename)
+            if not model_input_images:
+                raise ValueError(
+                    "Multimodal TerraTorch config detected, but task config is missing "
+                    "'model_input_images'. URL connector must provide modality-keyed inputs."
+                )
 
-                        # Copy the file
-                        print(f"Copying {old_path} to {new_path}")
-                        shutil.copy2(old_path, new_path)
+            for modality_tag in modality_tags:
+                modality_input = model_input_images.get(modality_tag)
+
+                if not modality_input:
+                    raise ValueError(
+                        f"Missing input image for modality '{modality_tag}'. "
+                        f"Available modalities: {list(model_input_images.keys())}"
+                    )
+
+                image_path = modality_input.get("imputed_image") or modality_input.get("original_image")
+
+                if not image_path:
+                    raise ValueError(f"No image path found for modality '{modality_tag}'.")
+
+                if not os.path.exists(image_path):
+                    raise FileNotFoundError(
+                        f"Input image for modality '{modality_tag}' does not exist: {image_path}"
+                    )
+
+                filename = os.path.basename(image_path)
+
+                # TerraTorch multimodal inference wants corresponding modal files
+                # in modality-specific roots, but the current code points all modalities
+                # to the same tmp-inf folder.
+                parts = filename.split("_")
+                new_parts = [part for part in parts if part != modality_tag]
+                new_filename = "_".join(new_parts)
+
+                old_path = image_path
+                new_path = os.path.join(tmp_folder, new_filename)
+
+                logger.info(f"Copying {old_path} to {new_path}")
+                shutil.copy2(old_path, new_path)
+
 
             # make dict here
             temp_spec = {}
@@ -185,10 +208,15 @@ def run_terratorch_inference():
 
         else:
             input_data_spec = output_folder
-            if isinstance(task_dict["imputed_input_image"], list):
-                img_grep = task_dict["imputed_input_image"][0]
-            elif isinstance(task_dict["imputed_input_image"], str):
-                img_grep = task_dict["imputed_input_image"]
+            imputed_input_image = task_dict.get("imputed_input_image")
+
+            if isinstance(imputed_input_image, list):
+                img_grep = imputed_input_image[0]
+            elif isinstance(imputed_input_image, str):
+                img_grep = imputed_input_image
+            else:
+                raise ValueError("Missing 'imputed_input_image' for unimodal inference.")
+            
             terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec} --data.init_args.img_grep {img_grep}'
 
         ## Now run the command and get a list of the inference output tifs

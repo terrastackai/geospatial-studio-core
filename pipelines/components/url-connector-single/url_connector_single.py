@@ -60,10 +60,51 @@ is_add_layer_task = False
 new_output_files = []
 output_image_list = []
 
+# helper functions
+# detect multi-input for model
+def expects_multi_input(task_dict):
+    specs = task_dict.get("model_input_data_spec") or []
+    return len(specs) > 1
+# map downloaded images model input by file_suffix
+def map_outputs_to_specs(output_image_list, model_input_data_spec):
+    mapped = {}
+
+    for spec in model_input_data_spec:
+        suffix = spec.get("file_suffix")
+        modality_tag = spec.get("modality_tag")
+
+        if not suffix or not modality_tag:
+            continue
+
+        matches = [
+            image_dict for image_dict in output_image_list
+            if image_dict.get("original_image", "").endswith(suffix)
+        ]
+
+        if len(matches) != 1:
+            raise GfmDataProcessingException(
+                f"Expected exactly one downloaded image for modality={modality_tag}, "
+                f"suffix={suffix}; found {len(matches)}."
+            )
+
+        mapped[modality_tag] = {
+            "original_image": matches[0].get("original_image"),
+            "imputed_image": matches[0].get("imputed_image"),
+            "file_suffix": suffix,
+            "collection": spec.get("collection"),
+        }
+
+    return mapped
 
 @metric_manager.count_failures(inference_id=inference_id, task_id=task_id)
 @metric_manager.record_duration(inference_id=inference_id, task_id=task_id)
 def url_connector_single():
+    task_dict = {}
+    inference_dict = {}
+    task_config_path = None
+    t1 = fst
+    t2 = fst
+
     try:
         notify_gfmaas_ui(
             event_id=inference_id,
@@ -149,38 +190,55 @@ def url_connector_single():
     ######################################################################################################
 
     finally:
-        if len(output_image_list) == 1:
-            ######################################################################################################
-            ### Update the task config and clean up
-            ######################################################################################################
-            try:
-                with open(task_config_path, "r") as fp:
-                    task_dict = json.load(fp)
-                if output_image_list[0].get("imputed_image"):
-                    task_dict["imputed_input_image"] = output_image_list[0].get("imputed_image")
+        if not task_config_path:
+            logger.info(f"{task_id}: Task config path not initialized; skipping config update.")
+            return
+
+        multi_input_task = expects_multi_input(task_dict)
+        ######################################################################################################
+        ### Update the task config and clean up
+        ######################################################################################################
+        if len(output_image_list) == 1 or multi_input_task:
+            with open(task_config_path, "r") as fp:
+                task_dict = json.load(fp)
+
+            if len(output_image_list) == 1:
+                image_dict = output_image_list[0]
+
+                if image_dict.get("imputed_image"):
+                    task_dict["imputed_input_image"] = image_dict.get("imputed_image")
                 elif not is_add_layer_task:
                     raise GfmDataProcessingException(
-                        f"Imputed file for file {output_image_list[0].get('original_image')} required for non add layer tasks."
+                        f"Imputed file for file {image_dict.get('original_image')} required for non add layer tasks."
                     )
-                task_dict["original_input_image"] = output_image_list[0].get("original_image")
 
-                logger.info(f"********* Updated task dictionary: {json.dumps(task_dict)} **********")
+                task_dict["original_input_image"] = image_dict.get("original_image")
 
-                with open(task_config_path, "w") as fp:
-                    json.dump(task_dict, fp, indent=4)
+            else:
+                task_dict["original_input_images"] = [
+                    image_dict.get("original_image") for image_dict in output_image_list
+                ]
 
-            except GfmDataProcessingException as gfm_ex:
-                report_exception(
-                    event_id=inference_id,
-                    task_id=task_id,
-                    error_code="1013",
-                    message=f"Preprocessing error: {gfm_ex}",
-                    verbose=True,
+                task_dict["imputed_input_images"] = [
+                    image_dict.get("imputed_image") for image_dict in output_image_list
+                    if image_dict.get("imputed_image")
+                ]
+
+                if not is_add_layer_task and len(task_dict["imputed_input_images"]) != len(output_image_list):
+                    raise GfmDataProcessingException(
+                        "Every multi-input image requires an imputed image for non add-layer tasks."
+                    )
+
+                task_dict["model_input_images"] = map_outputs_to_specs(
+                    output_image_list,
+                    task_dict.get("model_input_data_spec", []),
                 )
-                raise
 
-            except Exception as update_err:
-                logger.warning(f"{task_id}: Failed to update task config with output paths: {update_err}")
+            logger.info(f"********* Updated task dictionary: {json.dumps(task_dict)} **********")
+
+            with open(task_config_path, "w") as fp:
+                json.dump(task_dict, fp, indent=4)
+
         else:
             ######################################################################################################
             ###  Create subtasks for each of the tasks
@@ -299,7 +357,7 @@ def url_connector_single():
             f"Total = {round(et - fst, 1)}s"
         )
 
-        if len(output_image_list) > 1:
+        if len(output_image_list) > 1 and not multi_input_task:
             sys.exit(stop_exit_code)
 
 
