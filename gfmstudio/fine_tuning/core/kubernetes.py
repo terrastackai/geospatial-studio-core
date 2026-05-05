@@ -72,7 +72,7 @@ def get_sa_token():
     """
     token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
     try:
-        with open(token_path, 'r') as f:
+        with open(token_path, "r") as f:
             return f.read().strip()
     except FileNotFoundError:
         raise ValueError(f"Service account token not found at {token_path}")
@@ -80,19 +80,19 @@ def get_sa_token():
 
 def get_k8s_server_url():
     """Get the Kubernetes API server URL.
-    
+
     First tries to read from the service account (when running inside a cluster),
     then falls back to settings.
-    
+
     Returns
     -------
     str
         The Kubernetes API server URL
     """
     try:
-        k8s_host = os.getenv('KUBERNETES_SERVICE_HOST')
-        k8s_port = os.getenv('KUBERNETES_SERVICE_PORT', '443')
-        
+        k8s_host = os.getenv("KUBERNETES_SERVICE_HOST")
+        k8s_port = os.getenv("KUBERNETES_SERVICE_PORT", "443")
+
         if k8s_host:
             server_url = f"https://{k8s_host}:{k8s_port}"
             logging.debug(f"Detected Kubernetes server from environment: {server_url}")
@@ -121,7 +121,7 @@ async def ensure_logged_in(command=COMMAND):
         return
     except ProcessError:
         logging.debug("Logging into the cluster")
-        
+
         # Get server URL and token
         try:
             k8s_server = get_k8s_server_url()
@@ -129,7 +129,7 @@ async def ensure_logged_in(command=COMMAND):
         except ValueError as e:
             logging.error(f"Failed to get cluster credentials: {e}")
             raise
-        
+
         # Check if we're using OpenShift (oc) or Kubernetes (kubectl)
         # Try oc login first (for OpenShift)
         try:
@@ -140,20 +140,20 @@ async def ensure_logged_in(command=COMMAND):
                 "set-cluster",
                 "default-cluster",
                 f"--server={k8s_server}",
-                "--insecure-skip-tls-verify=true"
+                "--insecure-skip-tls-verify=true",
             ]
             await check_output(*set_cluster_cmd)
-            
+
             # Set credentials
             set_credentials_cmd = [
                 "kubectl",
                 "config",
                 "set-credentials",
                 "default-user",
-                f"--token={sa_token}"
+                f"--token={sa_token}",
             ]
             await check_output(*set_credentials_cmd)
-            
+
             # Set context
             set_context_cmd = [
                 "kubectl",
@@ -161,19 +161,14 @@ async def ensure_logged_in(command=COMMAND):
                 "set-context",
                 "default-context",
                 "--cluster=default-cluster",
-                "--user=default-user"
+                "--user=default-user",
             ]
             await check_output(*set_context_cmd)
-            
+
             # Use context
-            use_context_cmd = [
-                "kubectl",
-                "config",
-                "use-context",
-                "default-context"
-            ]
+            use_context_cmd = ["kubectl", "config", "use-context", "default-context"]
             await check_output(*use_context_cmd)
-            
+
             logging.info("Successfully configured kubectl for Kubernetes")
         except ProcessError:
             logging.error("Failed to configure kubectl for Kubernetes")
@@ -319,7 +314,9 @@ async def deploy_hpo_tuning_job(
     if settings.CELERY_TASKS_ENABLED and status == "In_progress":
         monitor_task = kwargs.get("_monitor_task")
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
-        await monitor_k8_job_completion(f"{deployment_id}-hpo",monitor_task=monitor_task)
+        await monitor_k8_job_completion(
+            f"{deployment_id}-hpo", monitor_task=monitor_task
+        )
 
     return deployment_id, status
 
@@ -446,7 +443,7 @@ async def deploy_tuning_job(
     if settings.CELERY_TASKS_ENABLED and status == "In_progress":
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
         # Extract monitor_task from kwargs if provided
-        monitor_task = kwargs.get('_monitor_task')
+        monitor_task = kwargs.get("_monitor_task")
         await monitor_k8_job_completion(ftune_id, monitor_task=monitor_task)
 
     return deployment_id, status
@@ -454,7 +451,7 @@ async def deploy_tuning_job(
 
 async def monitor_k8_job_completion(ftune_id: str, monitor_task=None):
     """Trigger Celery task to monitor Kubernetes job completion.
-    
+
     This function schedules a Celery task that will monitor the job with
     exponential backoff, releasing the worker between checks.
 
@@ -466,9 +463,11 @@ async def monitor_k8_job_completion(ftune_id: str, monitor_task=None):
         The Celery task to use for monitoring. If None, logs a warning.
     """
     if monitor_task is None:
-        logger.warning(f"{ftune_id}: No monitoring task provided, job will not be monitored")
+        logger.warning(
+            f"{ftune_id}: No monitoring task provided, job will not be monitored"
+        )
         return
-    
+
     # Schedule the monitoring task asynchronously
     # This releases the current worker immediately
     monitor_task.apply_async(args=[ftune_id])  # type: ignore[attr-defined]
@@ -477,7 +476,7 @@ async def monitor_k8_job_completion(ftune_id: str, monitor_task=None):
 
 async def get_pod_phase(job_name: str) -> str | None:
     """Check the status of a pod associated with a Kubernetes job.
-    
+
     This function checks if the pod is actually running, not just pending.
     Useful for determining if a job is truly in progress or just waiting for resources.
 
@@ -493,7 +492,7 @@ async def get_pod_phase(job_name: str) -> str | None:
     """
     try:
         await ensure_logged_in(f"kubectl get job --namespace={settings.NAMESPACE}")
-        
+
         # Get pod status using the job-name label
         command = [
             "kubectl",
@@ -504,7 +503,7 @@ async def get_pod_phase(job_name: str) -> str | None:
             "-o",
             "jsonpath={.items[0].status.phase}",
         ]
-        
+
         result = await run_subprocess_cmds(command=command)
         return result[0].strip() if result and result[0] else None
 
@@ -512,6 +511,7 @@ async def get_pod_phase(job_name: str) -> str | None:
         # Handle case where job/pod has been deleted by webhook
         logger.debug(f"{job_name}: Error checking pod status (likely deleted): {e}")
         return None
+
 
 async def get_job_conditions(job_name: str) -> str | None:
     """
@@ -528,20 +528,20 @@ async def get_job_conditions(job_name: str) -> str | None:
         If the job has no conditions.
     """
     try:
-        cmd =[
+        cmd = [
             "kubectl",
             "get",
             "job",
             job_name,
             "-o",
             "jsonpath={.status.conditions[0].type}",
-
         ]
-        result= await run_subprocess_cmds(cmd)
+        result = await run_subprocess_cmds(cmd)
         return result[0].strip() if result and result[0] else None
     except Exception as e:
         logger.debug(f"Error checking job conditions: {e}")
         return None
+
 
 async def get_aggregate_job_and_pod_status(job_name: str) -> str:
     """Get the status of a Kubernetes job.
@@ -555,7 +555,7 @@ async def get_aggregate_job_and_pod_status(job_name: str) -> str:
         The status of the job.
     """
     condition = await get_job_conditions(job_name)
-    if condition in ["Complete","Failed"]:
+    if condition in ["Complete", "Failed"]:
         return condition
     # Job exists but no terminal condition → check pod
     pod_phase = await get_pod_phase(job_name)
@@ -563,9 +563,10 @@ async def get_aggregate_job_and_pod_status(job_name: str) -> str:
         return pod_phase
     return "Unknown"
 
+
 async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
     """Function to check Kubernetes job status
-    
+
     This function checks both the job status and optionally the pod phase to determine
     if a job is truly running or just waiting for resources (pending).
 
@@ -616,14 +617,18 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
             job_name = job_name.split("/")[-1]
             logger.info(f"kubectl retry job_name: {job_name}")
             if job_name:
-                result = await check_tuning_task_status(job_name, retry_label_lookup=False)
+                result = await check_tuning_task_status(
+                    job_name, retry_label_lookup=False
+                )
                 logger.info(f"kubectl retry result: {result}")
                 # If still no status after retry, treat as Running
                 if result and result[0] is None:
-                    logger.info(f"{job_name}: Job exists but no status yet, treating as Running")
+                    logger.info(
+                        f"{job_name}: Job exists but no status yet, treating as Running"
+                    )
                     return "Running", job_name
                 return result if result else ("Running", job_name)
-        
+
         # Job exists but has no conditions - verify it exists and check pod status
         verify_cmd = [
             "kubectl",
@@ -634,7 +639,7 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
             "name",
         ]
         verify_result = await run_subprocess_cmds(command=verify_cmd)
-        
+
         if verify_result and verify_result[0]:
             # Job exists but no status conditions yet
             # Check if we should verify the pod phase
