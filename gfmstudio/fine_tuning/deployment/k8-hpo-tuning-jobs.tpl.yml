@@ -128,7 +128,7 @@ metadata:
     app: ${FTUNE_NAME}
 data:
   ftuning.sh: |
-    #!/bin/sh
+    #!/bin/bash
     set -e
 
     # Function to handle errors
