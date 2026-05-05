@@ -413,7 +413,7 @@ async def list_tunes(
         search_filters["name"] = name
     if status:
         qp_filters["status"] = status
-    
+
     # Apply group-based visibility filter
     visibility_filter = build_visibility_filter(Tunes, user, ArtifactType.tune, db)
     filter_expr = visibility_filter
@@ -1155,7 +1155,7 @@ async def try_tuned_model(
     )
 
     # Update the tune with user updated train options.
-    if user == tune_meta.created_by:
+    if user.lower() == tune_meta.created_by.lower():
         tunes_crud.update(
             db=db,
             item_id=str(tune_id),
@@ -1361,11 +1361,13 @@ async def get_bases(
             BaseModels.model_params["model_category"].astext
             == str(model_category).lower()
         )
-    
+
     # Apply group-based visibility filter
-    visibility_filter = build_visibility_filter(BaseModels, user, ArtifactType.backbone, db)
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
     filter_expr_list.append(visibility_filter)
-    
+
     filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = bases_crud.get_all(
         db=db,
@@ -1566,9 +1568,11 @@ async def list_tune_templates(
         qp_filters["purpose"] = purpose
 
     # Apply group-based visibility filter
-    visibility_filter = build_visibility_filter(TuneTemplate, user, ArtifactType.task_template, db)
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
     filter_expr_list.append(visibility_filter)
-    
+
     filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = tune_template_crud.get_all(
         db=db,
@@ -1673,8 +1677,14 @@ async def retrieve_task(
     """
     user = auth[0]
     # Check visibility using group-based filter
-    visibility_filter = build_visibility_filter(TuneTemplate, user, ArtifactType.task_template, db)
-    task = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1996,9 +2006,11 @@ async def list_datasets(
         filter_fields["status"] = status
 
     # Apply group-based visibility filter
-    visibility_filter = build_visibility_filter(GeoDataset, user, ArtifactType.dataset, db)
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
     filter_expr_list.append(visibility_filter)
-    
+
     filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = dataset_crud.get_all(
         db,

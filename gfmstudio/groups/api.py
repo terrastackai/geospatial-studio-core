@@ -604,7 +604,10 @@ async def grant_artifact_permission(
         )
 
     # Check ownership - artifact must be created by current user
-    if hasattr(artifact, "created_by") and artifact.created_by != user_email:
+    if (
+        hasattr(artifact, "created_by")
+        and artifact.created_by.lower() != user_email.lower()
+    ):
         raise HTTPException(
             status_code=403,
             detail="You can only share artifacts that you own",
