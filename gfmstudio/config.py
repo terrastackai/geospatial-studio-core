@@ -269,8 +269,6 @@ class Settings(BaseSettings):
         description="Cut-off data after which terratorch v2 should be in use",
     )
 
-    from pydantic import field_validator
-
     # Define all the fields
     K8S_JOB_SUCCESS_STATUSES: list[str] = Field(
         default=["Complete", "Succeeded", "SuccessCriteriaMet"]
