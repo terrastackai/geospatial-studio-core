@@ -555,8 +555,8 @@ async def get_aggregate_job_and_pod_status(job_name: str) -> str:
         The status of the job.
     """
     condition = await get_job_conditions(job_name)
-    success_status = settings.K8S_JOB_SUCCESS_STATUSES
-    failure_status = settings.K8S_JOB_FAILURE_STATUSES
+    success_status = settings.K8S_JOB_SUCCESS_STATUSES.split(",")
+    failure_status = settings.K8S_JOB_FAILURE_STATUSES.split(",")
     if condition in success_status:
         return "Complete"
     elif condition in failure_status:

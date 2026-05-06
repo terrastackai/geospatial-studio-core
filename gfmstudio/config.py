@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from pydantic import ConfigDict, Field, PostgresDsn, field_validator
+from pydantic import ConfigDict, Field, PostgresDsn
 from pydantic_settings import BaseSettings
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -269,32 +269,18 @@ class Settings(BaseSettings):
         description="Cut-off data after which terratorch v2 should be in use",
     )
 
-    # Define all the fields
-    K8S_JOB_SUCCESS_STATUSES: list[str] = Field(
-        default=["Complete", "Succeeded", "SuccessCriteriaMet"]
+    # Job Status Configuration - stored as comma-separated strings
+    K8S_JOB_SUCCESS_STATUSES: str = Field(
+        default="Complete,Succeeded,SuccessCriteriaMet"
     )
 
-    K8S_JOB_FAILED_STATUSES: list[str] = Field(
-        default=["Failed", "Error", "FailureTarget"]
-    )
+    K8S_JOB_FAILURE_STATUSES: str = Field(default="Failed,Error,FailureTarget")
 
-    K8S_JOB_TERMINAL_STATUSES: list[str] = Field(
-        default=["Complete", "Succeeded", "Failed", "Error"]
-    )
+    K8S_POD_RUNNING_STATUSES: str = Field(default="Running")
 
-    # Single validator for all K8S status fields
-    @field_validator(
-        "K8S_JOB_SUCCESS_STATUSES",
-        "K8S_JOB_FAILED_STATUSES",
-        "K8S_JOB_TERMINAL_STATUSES",
-        mode="before",
-    )
-    @classmethod
-    def parse_k8s_statuses(cls, v):
-        """Parse comma-separated string into list of statuses."""
-        if isinstance(v, str):
-            return [s.strip() for s in v.split(",")]
-        return v
+    K8S_POD_PENDING_STATUSES: str = Field(default="Pending")
+
+    K8S_JOB_TERMINAL_STATUSES: str = Field(default="Complete,Succeeded,Failed,Error")
 
     ####################
     # DATASET FACTORY
