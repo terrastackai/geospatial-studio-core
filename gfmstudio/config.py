@@ -276,12 +276,6 @@ class Settings(BaseSettings):
 
     K8S_JOB_FAILURE_STATUSES: str = Field(default="Failed,Error,FailureTarget")
 
-    K8S_POD_RUNNING_STATUSES: str = Field(default="Running")
-
-    K8S_POD_PENDING_STATUSES: str = Field(default="Pending")
-
-    K8S_JOB_TERMINAL_STATUSES: str = Field(default="Complete,Succeeded,Failed,Error")
-
     ####################
     # DATASET FACTORY
     ####################

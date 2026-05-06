@@ -26,6 +26,11 @@ from gfmstudio.log import logger
 tune_crud = crud.ItemCrud(model=Tunes)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 
+terminal_statuses = (
+    f"{settings.K8S_JOB_SUCCESS_STATUSES},{settings.K8S_JOB_FAILURE_STATUSES}"
+)
+terminal_statuses = [s.strip().lower() for s in terminal_statuses.split(",")]
+
 
 async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
     """Update tune status if current status is Pending.
@@ -78,9 +83,6 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
 
     # delete resources
-    # Get terminal statuses from config
-    terminal_statuses = [s.lower() for s in settings.K8S_JOB_TERMINAL_STATUSES]
-
     k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
     while k8s_job_status_lower not in terminal_statuses:
@@ -123,9 +125,6 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
 
     k8s_job_status, _ = await kubernetes.check_tuning_task_status(tune_id)
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
-
-    # Get terminal statuses from config
-    terminal_statuses = [s.lower() for s in settings.K8S_JOB_TERMINAL_STATUSES]
 
     k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
