@@ -49,7 +49,7 @@ spec:
       initContainers:
         - name: copy-config
           image: busybox
-          command: ['sh', 'c', 'cp /config/config-train.yaml /app/config/']
+          command: ['sh', '-c', 'cp /config/config-train.yaml /app/config/']
           volumeMounts:
             - name: config-volume
               mountPath: /config
