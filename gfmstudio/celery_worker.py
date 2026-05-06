@@ -102,7 +102,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
     )
     terminal_statuses = [s.strip().lower() for s in terminal_statuses.split(",")]
     if k8s_job_status in terminal_statuses:
-        logger.info(f"{ftune_id}: Job finished with status: {k8s_job_status}")
+        logger.info(f"{ftune_id}: Job finished with status: { k8s_job_status }")
         return k8s_job_status
 
     if k8s_job_status == "Running":
