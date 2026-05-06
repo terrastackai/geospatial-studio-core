@@ -92,6 +92,8 @@ RUN mkdir -p \
     /.local \
     /.jupyter \
     /geotunes/tune-tasks \
+    # Required by terratorch-iterate
+    /geotunes/tune-tasks/job_logs  \ 
     /data/output \
     /opt/app-root/src \
     /opt/app-root/src/lightning_logs \
