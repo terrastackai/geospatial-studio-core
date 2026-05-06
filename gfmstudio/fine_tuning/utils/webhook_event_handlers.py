@@ -74,7 +74,7 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
         Unique tune_id
     """
 
-    k8s_job_status, job_id = await kubernetes.check_k8s_job_status(tune_id)
+    k8s_job_status, job_id = await kubernetes.check_tuning_task_status(tune_id)
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
 
     # delete resources
@@ -89,7 +89,7 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
             break
 
         await asyncio.sleep(30)
-        k8s_job_status, job_id = await kubernetes.check_k8s_job_status(tune_id)
+        k8s_job_status, job_id = await kubernetes.check_tuning_task_status(tune_id)
 
         if k8s_job_status is None:
             logger.warning(f"{tune_id} Job status is None during poll")
@@ -118,7 +118,7 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
         Unique tune_id
     """
 
-    k8s_job_status, _ = await kubernetes.check_k8s_job_status(tune_id)
+    k8s_job_status, _ = await kubernetes.check_tuning_task_status(tune_id)
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
 
     k8s_job_status = str(k8s_job_status).lower()
@@ -132,7 +132,7 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
             break
 
         await asyncio.sleep(30)
-        k8s_job_status, _ = await kubernetes.check_k8s_job_status(tune_id)
+        k8s_job_status, _ = await kubernetes.check_tuning_task_status(tune_id)
 
         if k8s_job_status is None:
             logger.warning(f"{tune_id} Job status is None during poll")

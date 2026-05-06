@@ -11,7 +11,7 @@ from gfmstudio.amo.services import invoke_deploy_models_with_caikit
 from gfmstudio.amo.utils import invoke_model_offboarding_handler
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning.core.kubernetes import (
-    check_k8s_job_status,
+    check_tuning_task_status,
     deploy_hpo_tuning_job,
     deploy_tuning_job,
 )
@@ -73,7 +73,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
     max_wait = settings.KJOB_MAX_WAIT_SECONDS or 7200
 
     try:
-        k8s_job_status, _ = asyncio.run(check_k8s_job_status(ftune_id))
+        k8s_job_status, _ = asyncio.run(check_tuning_task_status(ftune_id))
     except Exception as exc:
         if "not found" in str(exc):
             # Job not found, consider it done (likely already completed and deleted)

@@ -24,7 +24,7 @@ from gfmstudio.config import settings
 from gfmstudio.fine_tuning import schemas
 from gfmstudio.fine_tuning.core import object_storage, tunes
 from gfmstudio.fine_tuning.core.kubernetes import (
-    check_k8s_job_status,
+    check_tuning_task_status,
     deploy_tuning_job,
 )
 from gfmstudio.fine_tuning.core.schema import TuneTemplateParameters
@@ -773,9 +773,7 @@ async def submit_tune_job(
             if updated_status == "Error":
                 status = "Failed"
             elif updated_status == "In_progress":
-                k8s_status, _ = await check_k8s_job_status(
-                    tune_id, check_pod_phase=True
-                )
+                k8s_status, _ = await check_tuning_task_status(tune_id)
 
                 if k8s_status == "Running":
                     status = "In_progress"

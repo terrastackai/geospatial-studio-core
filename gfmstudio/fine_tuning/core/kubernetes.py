@@ -576,8 +576,6 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
         Tune id
     retry_label_lookup: bool
         Whether to retry lookup with labels.
-    check_pod_phase: bool
-        Whether to check the pod phase to distinguish between pending and running states.
 
     Returns
     -------
