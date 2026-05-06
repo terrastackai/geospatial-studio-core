@@ -3,7 +3,7 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -35,7 +35,7 @@ class ArtifactPermissionGrant(BaseModel):
     """Schema for granting artifact access to a group."""
 
     artifact_type: ArtifactType
-    artifact_id: str
+    artifact_id: Union[UUID, str]
 
 
 class MemberOut(BaseModel):
