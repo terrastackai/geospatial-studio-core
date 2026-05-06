@@ -555,8 +555,12 @@ async def get_aggregate_job_and_pod_status(job_name: str) -> str:
         The status of the job.
     """
     condition = await get_job_conditions(job_name)
-    if condition in ["Complete", "Failed"]:
-        return condition
+    success_status = settings.K8S_JOB_SUCCESS_STATUSES
+    failure_status = settings.K8S_JOB_FAILURE_STATUSES
+    if condition in success_status:
+        return "Complete"
+    elif condition in failure_status:
+        return "Failed"
     # Job exists but no terminal condition → check pod
     pod_phase = await get_pod_phase(job_name)
     if pod_phase:

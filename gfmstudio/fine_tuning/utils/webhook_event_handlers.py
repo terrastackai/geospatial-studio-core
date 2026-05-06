@@ -78,9 +78,12 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
 
     # delete resources
-    k8s_job_status = str(k8s_job_status).lower()
+    # Get terminal statuses from config
+    terminal_statuses = [s.lower() for s in settings.K8S_JOB_TERMINAL_STATUSES]
+
+    k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
-    while ("complete" not in k8s_job_status) and ("failed" not in k8s_job_status):
+    while k8s_job_status_lower not in terminal_statuses:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
             logger.error(
@@ -95,7 +98,7 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
             logger.warning(f"{tune_id} Job status is None during poll")
             break
 
-        k8s_job_status = str(k8s_job_status).lower()
+        k8s_job_status_lower = str(k8s_job_status).lower()
 
     # delete resources; job, pvc, ConfigMap
     try:
@@ -121,9 +124,12 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
     k8s_job_status, _ = await kubernetes.check_tuning_task_status(tune_id)
     logger.info(f"{tune_id} Webhook: Job status: {k8s_job_status}")
 
-    k8s_job_status = str(k8s_job_status).lower()
+    # Get terminal statuses from config
+    terminal_statuses = [s.lower() for s in settings.K8S_JOB_TERMINAL_STATUSES]
+
+    k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
-    while ("complete" not in k8s_job_status) and ("failed" not in k8s_job_status):
+    while k8s_job_status_lower not in terminal_statuses:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
             logger.error(
@@ -138,7 +144,7 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
             logger.warning(f"{tune_id} Job status is None during poll")
             break
 
-        k8s_job_status = str(k8s_job_status).lower()
+        k8s_job_status_lower = str(k8s_job_status).lower()
 
     # append kjob to tune-id
     label = f"app=kjob-{tune_id}".lower()
