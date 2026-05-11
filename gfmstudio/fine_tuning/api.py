@@ -1448,7 +1448,11 @@ async def get_base_by_id(
         404: Base model not found
     """
     user = auth[0]
-    data = bases_crud.get_by_id(db=db, item_id=base_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
+    data = db.query(BaseModels).filter(and_(BaseModels.id == base_id, visibility_filter)).first()
     if not data:
         raise HTTPException(404, detail=f"Base Model {base_id} not found")
 
@@ -1722,7 +1726,11 @@ async def get_task_content_template(
         404: Task not found
     """
     user = auth[0]
-    data = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    data = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
     if not data:
         raise HTTPException(404, detail=f"Task {task_id} not found")
     content = base64.b64decode(data.content or "")
@@ -1767,7 +1775,11 @@ async def update_task_schema(
         412: Validation Error: Other validation errors
     """
     user = auth[0]
-    task = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -2442,7 +2454,11 @@ async def retrieve_dataset(
         404: Dataset Not Found
     """
     user = auth[0]
-    item = dataset_crud.get_by_id(db=db, item_id=dataset_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
+    item = db.query(GeoDataset).filter(and_(GeoDataset.id == dataset_id, visibility_filter)).first()
     if not item:
         raise HTTPException(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}
