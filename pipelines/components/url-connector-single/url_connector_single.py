@@ -167,9 +167,10 @@ def url_connector_single():
                     f"********* New filename for task: {task_id} : {new_filename} **********"
                 )
 
-                new_output_files = download_pre_signed_url(
+                downloaded_files = download_pre_signed_url(
                     new_filename, response, task_dict.get("date", ""), f"{task_folder}/"
                 )
+                new_output_files.extend(downloaded_files)
 
                 logger.info(
                     f"********* Downloaded output_files for task: {task_id} : {new_output_files} **********"
