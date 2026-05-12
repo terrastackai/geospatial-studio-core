@@ -134,8 +134,9 @@ def url_connector_single():
         ### Check the URL and download the data
         ######################################################################################################
         new_output_files = []
+        
         # If multimodal
-        if len(task_dict["url"]) > 1 and len(inference_dict["model_input_data_spec"]) > 1:
+        if len(task_dict["url"]) > 1 and expects_multi_input(inference_dict):
             # Download multimodal data and save the file names
             logger.info(f"********* Starting data pull multimodal data for task: {task_id} **********")
 
