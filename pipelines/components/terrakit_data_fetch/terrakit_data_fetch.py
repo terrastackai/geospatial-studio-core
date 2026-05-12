@@ -9,24 +9,25 @@ The TerraKit process will query data from a range of different data connectors
 # Dependencies
 # pip install terrakit==0.1.0 requests opentelemetry-distro opentelemetry-exporter-otlp tenacity
 
-import os
 import json
-import numpy as np
 import logging
+import os
+
+import numpy as np
+from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
+from gfm_data_processing.exceptions import GfmDataProcessingException
+from gfm_data_processing.metrics import MetricManager
 from tenacity import (
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_fixed,
-    retry_if_exception_type,
-    before_sleep_log,
 )
 from terrakit import DataConnector
 from terrakit.download.geodata_utils import save_data_array_to_file
-from terrakit.download.transformations.scale_data_xarray import scale_data_xarray
 from terrakit.download.transformations.impute_nans_xarray import impute_nans_xarray
-from gfm_data_processing.metrics import MetricManager
-from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
-from gfm_data_processing.exceptions import GfmDataProcessingException
+from terrakit.download.transformations.scale_data_xarray import scale_data_xarray
 from terrakit_cache import TerrakitPVCacheManager
 
 # Uncomment next 2 lines for local testing
@@ -50,8 +51,12 @@ metric_manager = MetricManager(component_name=process_id)
 cache_manager = TerrakitPVCacheManager(
     cache_dir=os.getenv("TERRAKIT_CACHE_DIR", "/pipeline/data/terrakit_cache"),
     cache_ttl_days=int(os.getenv("TERRAKIT_CACHE_TTL_DAYS", "30")),
-    max_cache_size_gb=float(os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB")) if os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB") else None,
-    enabled=os.getenv("TERRAKIT_CACHE_ENABLED", "true").lower() == "true"
+    max_cache_size_gb=(
+        float(os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB"))
+        if os.getenv("TERRAKIT_CACHE_MAX_SIZE_GB")
+        else None
+    ),
+    enabled=os.getenv("TERRAKIT_CACHE_ENABLED", "true").lower() == "true",
 )
 
 
@@ -73,7 +78,9 @@ def s1grd_to_decibels(da, modality_tag):
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
-def fetch_data_with_retry(dc, collection_name, data_date, bbox, maxcc, band_names, save_filepath, task_folder):
+def fetch_data_with_retry(
+    dc, collection_name, data_date, bbox, maxcc, band_names, save_filepath, task_folder
+):
     """
     Fetch data from connector with automatic retry on network errors.
     Retries up to 3 times with 5 second delays for network-related errors:
@@ -92,6 +99,86 @@ def fetch_data_with_retry(dc, collection_name, data_date, bbox, maxcc, band_name
         save_file=save_filepath,
         working_dir=task_folder,
     )
+
+
+def fetch_and_process_data(
+    dc,
+    collection_name,
+    data_date,
+    bbox,
+    maxcc,
+    band_names,
+    save_filepath,
+    imputed_file_path,
+    task_folder,
+    model_input_data_spec,
+    modality_tag,
+    cache_manager,
+    cache_key,
+    inference_id,
+    task_id,
+):
+    """
+    Fetch data from Terrakit, process it, and cache the results.
+    """
+    logger.info(f"🌍 Fetching data from Terrakit for {modality_tag} on {data_date}")
+
+    da = fetch_data_with_retry(
+        dc=dc,
+        collection_name=collection_name,
+        data_date=data_date,
+        bbox=bbox,
+        maxcc=maxcc,
+        band_names=band_names,
+        save_filepath=save_filepath,
+        task_folder=task_folder,
+    )
+    logger.debug("\n\nRetrieved data cube\n\n")
+    logger.debug(da)
+    nodata_value = da.attrs.get("_FillValue", -9999)
+
+    if (da.values == 0).all():
+        raise GfmDataProcessingException(
+            "All band values are zero, data cube retrieved is empty"
+        )
+
+    # Convert s1grd from linear to decibels
+    if model_input_data_spec.get("transform") == "to_decibels":
+        da = s1grd_to_decibels(da, modality_tag=modality_tag)
+
+    # Get scaling factor list from bands list
+    model_input_data_spec_scaling_factors = list(
+        float(band_dict.get("scaling_factor", 1))
+        for band_dict in model_input_data_spec["bands"]
+    )
+    dai = scale_data_xarray(da, model_input_data_spec_scaling_factors)
+
+    # Imputing nans if any are found in data
+    dai = impute_nans_xarray(dai, nodata_value=nodata_value)
+    save_data_array_to_file(dai, imputed_file_path, imputed=True)
+
+    # Cache the files
+    cache_metadata = {
+        "date": data_date,
+        "bbox": bbox,
+        "collection": collection_name,
+        "bands": band_names,
+        "maxcc": maxcc,
+        "modality": modality_tag,
+        "nodata_value": float(nodata_value),
+        "transform": model_input_data_spec.get("transform"),
+        "inference_id": inference_id,
+        "task_id": task_id,
+    }
+
+    cache_manager.cache_files(
+        cache_key=cache_key,
+        original_file_path=save_filepath,
+        imputed_file_path=imputed_file_path,
+        metadata=cache_metadata,
+    )
+
+    return save_filepath, imputed_file_path
 
 
 @metric_manager.count_failures(inference_id=inference_id, task_id=task_id)
@@ -136,7 +223,11 @@ def terrakit_data_fetch():
             if no_of_modalities == 1:
                 data_date = task_dict["date"]
                 primary_date = data_date
-            elif task_dict["date"][i] and no_of_modalities > 1 and task_dict["date"][i] != "":
+            elif (
+                task_dict["date"][i]
+                and no_of_modalities > 1
+                and task_dict["date"][i] != ""
+            ):
                 data_date = task_dict["date"][i]
                 primary_date = task_dict["date"][0]
 
@@ -166,8 +257,11 @@ def terrakit_data_fetch():
 
             save_filepath = f"{task_folder}/{task_id}_{modality_tag}_{output_file_date}{file_suffix}.tif"
             imputed_file_path = f"{task_folder}/{task_id}_{modality_tag}_{output_file_date}_imputed{file_suffix}.tif"
-            
-            band_names = list(band_dict.get("band_name") for band_dict in model_input_data_spec["bands"])
+
+            band_names = list(
+                band_dict.get("band_name")
+                for band_dict in model_input_data_spec["bands"]
+            )
 
             # Generate cache key
             cache_key = cache_manager.get_cache_key(
@@ -177,88 +271,110 @@ def terrakit_data_fetch():
                 band_names=band_names,
                 maxcc=maxcc,
                 modality_tag=modality_tag,
-                transform=model_input_data_spec.get("transform")
+                transform=model_input_data_spec.get("transform"),
             )
-            
-            cached_data = cache_manager.get_cached_files(cache_key)
-            
+
+            cached_data = cache_manager.get_or_wait_for_cache(cache_key, timeout=300)
+
             if cached_data:
                 # Cache hit - copy from cache to task folder
                 logger.info(f"🎯 Using cached data for {modality_tag} on {data_date}")
-                
+
                 original_pv_path = cached_data["original_pv_path"]
                 imputed_pv_path = cached_data["imputed_pv_path"]
-                
+
                 # Copy (or hardlink) from cache to task folder
-                success_original = cache_manager.copy_cached_file(original_pv_path, save_filepath)
-                success_imputed = cache_manager.copy_cached_file(imputed_pv_path, imputed_file_path)
-                
+                success_original = cache_manager.copy_cached_file(
+                    original_pv_path, save_filepath
+                )
+                success_imputed = cache_manager.copy_cached_file(
+                    imputed_pv_path, imputed_file_path
+                )
+
                 if success_original and success_imputed:
                     original_input_images += [save_filepath]
                     imputed_input_images += [imputed_file_path]
-                    logger.info(f"✅ Successfully retrieved cached files")
+                    logger.info("✅ Successfully retrieved cached files")
                     continue  # Skip to next modality
                 else:
-                    logger.warning(f"⚠️ Failed to copy cached files, fetching from Terrakit...")
-            
+                    logger.warning(
+                        "⚠️ Failed to copy cached files, fetching from Terrakit..."
+                    )
+
             # Cache miss or copy failed - fetch from Terrakit
-            logger.info(f"🌍 Fetching data from Terrakit for {modality_tag} on {data_date}")
-            
-            # Use tenacity for automatic retry on network errors
-            da = fetch_data_with_retry(
-                dc=dc,
-                collection_name=collection_name,
-                data_date=data_date,
-                bbox=bbox,
-                maxcc=maxcc,
-                band_names=band_names,
-                save_filepath=save_filepath,
-                task_folder=task_folder,
-            )
-            logger.debug("\n\nRetrieved data cube\n\n")
-            logger.debug(da)
-            nodata_value = da.attrs.get("_FillValue", -9999)
+            lock = cache_manager.acquire_fetch_lock(cache_key)
+            if lock:
+                logger.info(
+                    f"🌍 Fetching data from Terrakit for {modality_tag} on {data_date}"
+                )
 
-            if (da.values == 0).all():
-                raise GfmDataProcessingException("All band values are zero, data cube retrieved is empty")
+                try:
+                    cached_data = cache_manager.get_cached_files(cache_key)
+                    if cached_data:
+                        logger.info("🎯 Cache appeared while acquiring lock, using it")
+                        original_pv_path = cached_data["original_pv_path"]
+                        imputed_pv_path = cached_data["imputed_pv_path"]
+                        cache_manager.copy_cached_file(original_pv_path, save_filepath)
+                        cache_manager.copy_cached_file(
+                            imputed_pv_path, imputed_file_path
+                        )
+                    else:
+                        fetch_and_process_data(
+                            dc=dc,
+                            collection_name=collection_name,
+                            data_date=data_date,
+                            bbox=bbox,
+                            maxcc=maxcc,
+                            band_names=band_names,
+                            save_filepath=save_filepath,
+                            imputed_file_path=imputed_file_path,
+                            task_folder=task_folder,
+                            model_input_data_spec=model_input_data_spec,
+                            modality_tag=modality_tag,
+                            cache_manager=cache_manager,
+                            cache_key=cache_key,
+                            inference_id=inference_id,
+                            task_id=task_id,
+                        )
+                    original_input_images += [save_filepath]
+                    imputed_input_images += [imputed_file_path]
+                finally:
+                    cache_manager.release_fetch_lock(lock)
+            else:
+                logger.info("⏳ Waiting for another process to fetch and cache...")
+                cached_data = cache_manager._wait_for_cache_to_appear(
+                    cache_key, timeout=600
+                )
 
-            # Convert s1grd from linear to decibels
-            if model_input_data_spec.get("transform") == "to_decibels":
-                da = s1grd_to_decibels(da, modality_tag=modality_tag)
+                if cached_data:
+                    original_pv_path = cached_data["original_pv_path"]
+                    imputed_pv_path = cached_data["imputed_pv_path"]
+                    cache_manager.copy_cached_file(original_pv_path, save_filepath)
+                    cache_manager.copy_cached_file(imputed_pv_path, imputed_file_path)
+                    original_input_images += [save_filepath]
+                    imputed_input_images += [imputed_file_path]
+                else:
+                    logger.warning("⚠️ Timeout waiting for cache, fetching ourselves")
 
-            # Get scaling factor list from bands list
-            model_input_data_spec_scaling_factors = list(
-                float(band_dict.get("scaling_factor", 1)) for band_dict in model_input_data_spec["bands"]
-            )
-            dai = scale_data_xarray(da, model_input_data_spec_scaling_factors)
-
-            # Imputing nans if any are found in data
-            dai = impute_nans_xarray(dai, nodata_value=nodata_value)
-            save_data_array_to_file(dai, imputed_file_path, imputed=True)
-            
-            original_input_images += [save_filepath]
-            imputed_input_images += [imputed_file_path]
-            
-            # Cache the files to /pipeline/data/terrakit_cache
-            cache_metadata = {
-                "date": data_date,
-                "bbox": bbox,
-                "collection": collection_name,
-                "bands": band_names,
-                "maxcc": maxcc,
-                "modality": modality_tag,
-                "nodata_value": float(nodata_value),
-                "transform": model_input_data_spec.get("transform"),
-                "inference_id": inference_id,
-                "task_id": task_id
-            }
-            
-            cache_manager.cache_files(
-                cache_key=cache_key,
-                original_file_path=save_filepath,
-                imputed_file_path=imputed_file_path,
-                metadata=cache_metadata
-            )
+                    fetch_and_process_data(
+                        dc=dc,
+                        collection_name=collection_name,
+                        data_date=data_date,
+                        bbox=bbox,
+                        maxcc=maxcc,
+                        band_names=band_names,
+                        save_filepath=save_filepath,
+                        imputed_file_path=imputed_file_path,
+                        task_folder=task_folder,
+                        model_input_data_spec=model_input_data_spec,
+                        modality_tag=modality_tag,
+                        cache_manager=cache_manager,
+                        cache_key=cache_key,
+                        inference_id=inference_id,
+                        task_id=task_id,
+                    )
+                    original_input_images += [save_filepath]
+                    imputed_input_images += [imputed_file_path]
 
         ######################################################################################################
         ###  (optional) if you want to pass on information to later stages of the pipelines,
@@ -274,7 +390,11 @@ def terrakit_data_fetch():
         with open(task_config_path, "w") as fp:
             json.dump(task_dict, fp, indent=4)
     except Exception as ex:
-        logger.error(f"{inference_id}: Exception {type(ex).__name__}: {ex}", stack_info=True, exc_info=True)
+        logger.error(
+            f"{inference_id}: Exception {type(ex).__name__}: {ex}",
+            stack_info=True,
+            exc_info=True,
+        )
         report_exception(
             event_id=inference_id,
             task_id=task_id,
