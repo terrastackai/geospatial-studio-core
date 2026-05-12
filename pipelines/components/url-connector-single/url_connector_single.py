@@ -161,7 +161,7 @@ def url_connector_single():
                 )
                 file_extension = original_filename.rsplit(".", 1)[-1]
                 date_str = task_dict["date"][i] if task_dict.get("date") else ""
-                new_filename = f"{task_id}_{file_suffix}_{date_str}.{file_extension}"
+                new_filename = f"{task_id}_{date_str}_{file_suffix}.{file_extension}"
 
                 logger.info(
                     f"********* New filename for task: {task_id} : {new_filename} **********"
@@ -200,6 +200,8 @@ def url_connector_single():
             if not is_add_layer_task:
                 imputed_image = impute_nans(new_output_file, f"{task_folder}/", "")
             output_image_list.append({"original_image": new_output_file, "imputed_image": imputed_image})
+
+        logger.info(f"********* Output Image list: {output_image_list} *********")
 
         if len(output_image_list) == 0:
             raise GfmDataProcessingException("No files returned from impute NaNs.")
@@ -240,8 +242,7 @@ def url_connector_single():
         if not task_config_path:
             logger.info(f"{task_id}: Task config path not initialized; skipping config update.")
             return
-
-        multi_input_task = expects_multi_input(task_dict)
+        multi_input_task = expects_multi_input(inference_dict)
         ######################################################################################################
         ### Update the task config and clean up
         ######################################################################################################
