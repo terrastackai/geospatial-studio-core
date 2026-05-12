@@ -134,7 +134,7 @@ def url_connector_single():
         ### Check the URL and download the data
         ######################################################################################################
         new_output_files = []
-        
+
         # If multimodal
         if len(task_dict["url"]) > 1 and expects_multi_input(inference_dict):
             # Download multimodal data and save the file names
@@ -156,13 +156,13 @@ def url_connector_single():
                     f"********* Original filename for task: {task_id} : {original_filename} **********"
                 )
 
-                # create the multimodal_file_name
-                file_suffix = inference_dict["model_input_data_spec"][i].get(
-                    "file_suffix", f"modality{i}"
-                )
+                # Extract both file_suffix and modality_tag from model_input_data_spec
+                spec = inference_dict["model_input_data_spec"][i]
+                file_suffix = spec.get("file_suffix", "")
+                modality_tag = spec.get("modality_tag", "")
                 file_extension = original_filename.rsplit(".", 1)[-1]
                 date_str = task_dict["date"][i] if task_dict.get("date") else ""
-                new_filename = f"{task_id}_{date_str}_{file_suffix}.{file_extension}"
+                new_filename = f"{task_id}_{modality_tag}_{date_str}_{file_suffix}.{file_extension}"
 
                 logger.info(
                     f"********* New filename for task: {task_id} : {new_filename} **********"
