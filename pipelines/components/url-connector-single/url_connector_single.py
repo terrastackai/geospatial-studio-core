@@ -130,10 +130,41 @@ def url_connector_single():
         ######################################################################################################
         ### Check the URL and download the data
         ######################################################################################################
+        new_output_files = []
+        # If multimodal
+        if len(task_dict["url"]) > 1 and len(inference_dict["model_input_data_spec"]) > 1:
+            # Download multimodal data and save the file names
+            logger.info(f"********* Starting data pull multimodal data for task: {task_id} **********")
 
-        logger.info(f"********* Starting data pull for task: {task_id} **********")
-        filename, response = check_url_input(task_dict["url"], task_id, inference_id)
-        new_output_files = download_pre_signed_url(filename, response, task_dict.get("date", ""), f"{task_folder}/")
+            for i, url in enumerate(task_dict["url"]):
+                # Add date in the task_dict
+                if "date" not in task_dict:
+                    task_dict["date"] = []
+                from datetime import datetime
+                task_dict["date"].append(datetime.now().strftime("%Y-%m-%d"))
+                # Check the URL and download the data
+                original_filename, response = check_url_input(url, task_id, inference_id)
+                
+                logger.info(f"********* Original filename for task: {task_id} : {original_filename} **********")
+
+                # create the multimodal_file_name
+                modality = inference_dict["model_input_data_spec"][i].get("modality_tag", f"modality{i}")
+                file_extension = original_filename.rsplit(".", 1)[-1] 
+                date_str = task_dict["date"][i] if task_dict.get("date") else ""
+                new_filename = f"{task_id}_{modality}_{date_str}.{file_extension}"
+                
+                logger.info(f"********* New filename for task: {task_id} : {new_filename} **********")
+
+                new_output_files = download_pre_signed_url(new_filename, response, task_dict.get("date", ""), f"{task_folder}/")
+
+                logger.info(f"********* Downloaded output_files for task: {task_id} : {new_output_files} **********")
+
+
+        else:
+            logger.info(f"********* Starting data pull for task: {task_id} **********")
+            filename, response = check_url_input(task_dict["url"], task_id, inference_id)
+
+            new_output_files = download_pre_signed_url(filename, response, task_dict.get("date", ""), f"{task_folder}/")
 
         if not new_output_files:
             raise GfmDataProcessingException("No files returned from download_pre_signed_url.")
