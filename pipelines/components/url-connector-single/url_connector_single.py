@@ -156,12 +156,12 @@ def url_connector_single():
                 )
 
                 # create the multimodal_file_name
-                modality = inference_dict["model_input_data_spec"][i].get(
-                    "modality_tag", f"modality{i}"
+                file_suffix = inference_dict["model_input_data_spec"][i].get(
+                    "file_suffix", f"modality{i}"
                 )
                 file_extension = original_filename.rsplit(".", 1)[-1]
                 date_str = task_dict["date"][i] if task_dict.get("date") else ""
-                new_filename = f"{task_id}_{modality}_{date_str}.{file_extension}"
+                new_filename = f"{task_id}_{file_suffix}_{date_str}.{file_extension}"
 
                 logger.info(
                     f"********* New filename for task: {task_id} : {new_filename} **********"
