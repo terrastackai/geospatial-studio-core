@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import shutil
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -261,10 +262,40 @@ class TerrakitPVCacheManager:
                 cache_key, date
             )
 
-            # Copy files to PV cache
-            logger.info("📤 Caching files to PV...")
-            shutil.copy2(original_file_path, original_pv_path)
-            shutil.copy2(imputed_file_path, imputed_pv_path)
+            unique_id = str(uuid.uuid4())[:8]
+
+            # temporary cache file_paths
+            original_tmp_path = f"{original_pv_path}.tmp.{unique_id}"
+            imputed_tmp_path = f"{imputed_pv_path}.tmp.{unique_id}"
+
+            try:
+                logger.info(f"📤 Writing to temporary cache files (ID: {unique_id})...")
+                shutil.copy2(original_file_path, original_tmp_path)
+                shutil.copy2(imputed_file_path, imputed_tmp_path)
+
+                if Path(original_pv_path).exists() and Path(imputed_pv_path).exists():
+                    logger.info(
+                        "⚠️ Cache already exists (another process cached it), cleaning up temp files"
+                    )
+                    Path(original_tmp_path).unlink(missing_ok=True)
+                    Path(imputed_tmp_path).unlink(missing_ok=True)
+                    return True
+
+                logger.info("🔄 Atomically renaming cache files...")
+                os.rename(original_tmp_path, original_pv_path)
+                os.rename(imputed_tmp_path, imputed_pv_path)
+            except FileExistsError:
+                # Another process renamed between our check and rename (rare race condition)
+                logger.info(
+                    "⚠️ Race condition: another process cached first, cleaning up"
+                )
+                Path(original_tmp_path).unlink(missing_ok=True)
+                Path(imputed_tmp_path).unlink(missing_ok=True)
+                return True
+            except Exception as e:
+                Path(original_tmp_path).unlink(missing_ok=True)
+                Path(imputed_tmp_path).unlink(missing_ok=True)
+                raise e
 
             # Store metadata in Redis
             cache_metadata = {
