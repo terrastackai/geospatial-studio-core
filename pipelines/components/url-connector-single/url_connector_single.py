@@ -8,18 +8,21 @@ The operator to pull and pre-process input data from pre-signed URLs.
 
 # pip install rasterio numpy opentelemetry-distro opentelemetry-exporter-otlp
 
+import copy
+import json
 import os
 import sys
 import time
-import json
-import copy
 
-from sqlalchemy import create_engine, text
-from gfm_data_processing.metrics import MetricManager
 from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
 from gfm_data_processing.exceptions import GfmDataProcessingException
+from gfm_data_processing.metrics import MetricManager
 from gfm_data_processing.raster_data_operations import impute_nans, verify_input_image
-from preprocessing_helper.user_store_download_operations import check_url_input, download_pre_signed_url
+from preprocessing_helper.user_store_download_operations import (
+    check_url_input,
+    download_pre_signed_url,
+)
+from sqlalchemy import create_engine, text
 
 # Uncomment for local testing
 # import dotenv
@@ -141,24 +144,36 @@ def url_connector_single():
                 if "date" not in task_dict:
                     task_dict["date"] = []
                 from datetime import datetime
+
                 task_dict["date"].append(datetime.now().strftime("%Y-%m-%d"))
                 # Check the URL and download the data
-                original_filename, response = check_url_input(url, task_id, inference_id)
-                
-                logger.info(f"********* Original filename for task: {task_id} : {original_filename} **********")
+                original_filename, response = check_url_input(
+                    url, task_id, inference_id
+                )
+
+                logger.info(
+                    f"********* Original filename for task: {task_id} : {original_filename} **********"
+                )
 
                 # create the multimodal_file_name
-                modality = inference_dict["model_input_data_spec"][i].get("modality_tag", f"modality{i}")
-                file_extension = original_filename.rsplit(".", 1)[-1] 
+                modality = inference_dict["model_input_data_spec"][i].get(
+                    "modality_tag", f"modality{i}"
+                )
+                file_extension = original_filename.rsplit(".", 1)[-1]
                 date_str = task_dict["date"][i] if task_dict.get("date") else ""
                 new_filename = f"{task_id}_{modality}_{date_str}.{file_extension}"
-                
-                logger.info(f"********* New filename for task: {task_id} : {new_filename} **********")
 
-                new_output_files = download_pre_signed_url(new_filename, response, task_dict.get("date", ""), f"{task_folder}/")
+                logger.info(
+                    f"********* New filename for task: {task_id} : {new_filename} **********"
+                )
 
-                logger.info(f"********* Downloaded output_files for task: {task_id} : {new_output_files} **********")
+                new_output_files = download_pre_signed_url(
+                    new_filename, response, task_dict.get("date", ""), f"{task_folder}/"
+                )
 
+                logger.info(
+                    f"********* Downloaded output_files for task: {task_id} : {new_output_files} **********"
+                )
 
         else:
             logger.info(f"********* Starting data pull for task: {task_id} **********")
