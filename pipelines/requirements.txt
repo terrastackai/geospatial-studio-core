@@ -29,7 +29,7 @@ tqdm
 wget
 xarray
 redis
-redlock-ng
+python-redis-lock>=4.0.0
 
 
   

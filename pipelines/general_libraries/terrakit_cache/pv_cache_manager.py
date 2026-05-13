@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import redis
+import redis_lock
 from gfm_data_processing.common import logger
-from redlock import Redlock
 
 REDIS_URL = os.getenv("REDIS_URL", "")
 
@@ -97,12 +97,6 @@ class TerrakitPVCacheManager:
         except Exception as e:
             logger.error(f"❌ Cache directory not writable: {e} - cache disabled")
             self.enabled = False
-
-        self.redlock = Redlock(
-            connection_details=[{"url": REDIS_URL}],
-            retry_count=3,
-            retry_delay=0.2,
-        )
 
         self.fetch_lock_ttl = 300000
 
@@ -421,15 +415,23 @@ class TerrakitPVCacheManager:
         lock_key = f"{cache_key}:fetch_lock"
 
         try:
-            lock = self.redlock.lock(lock_key, self.fetch_lock_ttl)
-
-            if lock:
+            lock = redis_lock.Lock(
+                self.redis_client,
+                lock_key,
+                expire=self.fetch_lock_ttl,
+                auto_renewal=True,
+                strict=True,
+            )
+            acquired = lock.acquire(blocking=False)
+            if acquired:
                 logger.info(f"🔒 Acquired fetch lock: {cache_key[:16]}...")
                 return lock
             else:
                 logger.info(f"❌ Failed to acquire lock: {cache_key[:16]}...")
                 return None
-
+        except redis_lock.AlreadyAcquired:
+            logger.info(f"❌ Lock already held by another process: {cache_key[:16]}...")
+            return None
         except Exception as e:
             logger.error(f"❌ Error acquiring lock: {e}")
             return None
@@ -448,9 +450,12 @@ class TerrakitPVCacheManager:
             return False
 
         try:
-            self.redlock.unlock(lock)
+            lock.release()
             logger.info("🔓 Released fetch lock")
             return True
+        except redis_lock.NotAcquired:
+            logger.warning("⚠️ Lock was not acquired or already released")
+            return False
         except Exception as e:
             logger.error(f"❌ Error releasing lock: {e}")
             return False
