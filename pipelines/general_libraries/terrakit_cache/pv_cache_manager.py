@@ -335,7 +335,7 @@ class TerrakitPVCacheManager:
             return False
 
     def get_or_wait_for_cache(
-        self, cache_key: str, timeout: int = 300
+        self, cache_key: str, timeout: int = 600
     ) -> Optional[Dict]:
         """
         Get cached files or wait if another process is fetching.
@@ -383,15 +383,14 @@ class TerrakitPVCacheManager:
         check_interval = 2
 
         while time.time() - start_time < timeout:
-            cached_data = self.get_cached_files(cache_key)
-            if cached_data:
-                logger.info(f"✅ Cache now available: {cache_key[:16]}...")
-                return cached_data
-
             lock_key = f"{cache_key}:fetch_lock"
             if not self.redis_client.exists(lock_key):
-                # Lock released but no cache - other process may have failed
-                logger.warning("⚠️ Lock released but no cache found")
+                cached_data = self.get_cached_files(cache_key)
+                if cached_data:
+                    logger.info(f"✅ Cache now available: {cache_key[:16]}...")
+                    return cached_data
+                else:
+                    logger.warning("⚠️ Lock released but no cache found")
                 return None
 
             time.sleep(check_interval)

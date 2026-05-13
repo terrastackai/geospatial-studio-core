@@ -274,7 +274,7 @@ def terrakit_data_fetch():
                 transform=model_input_data_spec.get("transform"),
             )
 
-            cached_data = cache_manager.get_or_wait_for_cache(cache_key, timeout=300)
+            cached_data = cache_manager.get_or_wait_for_cache(cache_key, timeout=600)
 
             if cached_data:
                 # Cache hit - copy from cache to task folder
