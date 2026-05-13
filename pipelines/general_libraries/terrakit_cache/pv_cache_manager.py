@@ -384,14 +384,12 @@ class TerrakitPVCacheManager:
 
         while time.time() - start_time < timeout:
             lock_key = f"{cache_key}:fetch_lock"
+            cached_data = self.get_cached_files(cache_key)
+            if cached_data:
+                logger.info(f"✅ Cache now available: {cache_key[:16]}...")
+                return cached_data
             if not self.redis_client.exists(lock_key):
-                cached_data = self.get_cached_files(cache_key)
-                if cached_data:
-                    logger.info(f"✅ Cache now available: {cache_key[:16]}...")
-                    return cached_data
-                else:
-                    logger.warning("⚠️ Lock released but no cache found")
-                return None
+                logger.debug("🔓 Lock released, waiting for cache to appear...")
 
             time.sleep(check_interval)
 
