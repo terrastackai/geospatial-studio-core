@@ -2405,6 +2405,21 @@ async def onboard_dataset(
             create_job_deployment_file_command, shell=True
         )
         logger.info("Job deployment file created " + str(create_deployment_file_output))
+
+        # Add security context for job deployments
+        if settings.APPEND_SECURITY_CONTEXT and settings.APPEND_SECURITY_CONTEXT.lower() == "true":
+            add_security_context_command = (
+                f"sed -i '/serviceAccountName: api-gateway-sa/a\\"
+                f"      securityContext:\\n"
+                f"        fsGroup: 1000\\n"
+                f"        fsGroupChangePolicy: \"OnRootMismatch\"' "
+                f"{kjob_tpl}"
+            )
+            security_context_output = subprocess.check_output(
+                add_security_context_command, shell=True
+            )
+            logger.info("Security context added for job: " + str(security_context_output))
+
         replace_id_output = subprocess.check_output(
             replace_dataset_id_command, shell=True
         )
