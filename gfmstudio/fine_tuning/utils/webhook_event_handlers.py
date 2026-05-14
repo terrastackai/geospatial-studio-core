@@ -255,6 +255,8 @@ async def handle_fine_tuning_webhooks(
                 item={"status": event.detail["status"], "logs": full_s3_log_file_path},
                 protected=False,
             )
+            session.commit()
+            logger.info(f"Successfully updated {tune_id} to {event.detail['status']}")
     except Exception:
         logger.exception("Tune status was not updated.")
 
