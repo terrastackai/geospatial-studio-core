@@ -3,7 +3,7 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -35,7 +35,7 @@ class ArtifactPermissionGrant(BaseModel):
     """Schema for granting artifact access to a group."""
 
     artifact_type: ArtifactType
-    artifact_id: UUID
+    artifact_id: Union[UUID, str]
 
 
 class MemberOut(BaseModel):
@@ -53,7 +53,7 @@ class ArtifactPermissionOut(BaseModel):
 
     group_id: UUID
     artifact_type: ArtifactType
-    artifact_id: UUID
+    artifact_id: str
     granted_by: str
     granted_at: datetime
 
@@ -71,6 +71,41 @@ class GroupOut(BaseModel):
     members: list[MemberOut] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GroupSharingInfo(BaseModel):
+    """Information about a group an artifact is shared with."""
+
+    group_id: UUID
+    group_name: str
+    granted_by: str
+    granted_at: datetime
+    user_role: Optional[GroupRole] = None  # Present if user is a member
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ArtifactSharingDetail(BaseModel):
+    """Detailed information about an artifact shared with a group."""
+
+    artifact_id: str
+    artifact_type: ArtifactType
+    artifact_name: Optional[str] = None  # If available from artifact model
+    granted_by: str
+    granted_at: datetime
+    created_by: str  # Artifact owner
+    created_at: datetime  # When artifact was created
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ArtifactSharingListResponse(BaseModel):
+    """Paginated response for artifact sharing list."""
+
+    total: int
+    limit: int
+    offset: int
+    artifacts: list[ArtifactSharingDetail]
 
 
 # Made with Bob

@@ -413,7 +413,7 @@ async def list_tunes(
         search_filters["name"] = name
     if status:
         qp_filters["status"] = status
-    
+
     # Apply group-based visibility filter
     visibility_filter = build_visibility_filter(Tunes, user, ArtifactType.tune, db)
     filter_expr = visibility_filter
@@ -1155,7 +1155,7 @@ async def try_tuned_model(
     )
 
     # Update the tune with user updated train options.
-    if user == tune_meta.created_by:
+    if user.lower() == tune_meta.created_by.lower():
         tunes_crud.update(
             db=db,
             item_id=str(tune_id),
@@ -1361,11 +1361,13 @@ async def get_bases(
             BaseModels.model_params["model_category"].astext
             == str(model_category).lower()
         )
-    
+
     # Apply group-based visibility filter
-    visibility_filter = build_visibility_filter(BaseModels, user, ArtifactType.backbone, db)
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
     filter_expr_list.append(visibility_filter)
-    
+
     filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = bases_crud.get_all(
         db=db,
@@ -1446,7 +1448,11 @@ async def get_base_by_id(
         404: Base model not found
     """
     user = auth[0]
-    data = bases_crud.get_by_id(db=db, item_id=base_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
+    data = db.query(BaseModels).filter(and_(BaseModels.id == base_id, visibility_filter)).first()
     if not data:
         raise HTTPException(404, detail=f"Base Model {base_id} not found")
 
@@ -1566,9 +1572,11 @@ async def list_tune_templates(
         qp_filters["purpose"] = purpose
 
     # Apply group-based visibility filter
-    visibility_filter = build_visibility_filter(TuneTemplate, user, ArtifactType.task_template, db)
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
     filter_expr_list.append(visibility_filter)
-    
+
     filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = tune_template_crud.get_all(
         db=db,
@@ -1673,8 +1681,14 @@ async def retrieve_task(
     """
     user = auth[0]
     # Check visibility using group-based filter
-    visibility_filter = build_visibility_filter(TuneTemplate, user, ArtifactType.task_template, db)
-    task = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1712,7 +1726,11 @@ async def get_task_content_template(
         404: Task not found
     """
     user = auth[0]
-    data = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    data = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
     if not data:
         raise HTTPException(404, detail=f"Task {task_id} not found")
     content = base64.b64decode(data.content or "")
@@ -1757,7 +1775,11 @@ async def update_task_schema(
         412: Validation Error: Other validation errors
     """
     user = auth[0]
-    task = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1996,9 +2018,11 @@ async def list_datasets(
         filter_fields["status"] = status
 
     # Apply group-based visibility filter
-    visibility_filter = build_visibility_filter(GeoDataset, user, ArtifactType.dataset, db)
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
     filter_expr_list.append(visibility_filter)
-    
+
     filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = dataset_crud.get_all(
         db,
@@ -2381,6 +2405,21 @@ async def onboard_dataset(
             create_job_deployment_file_command, shell=True
         )
         logger.info("Job deployment file created " + str(create_deployment_file_output))
+
+        # Add security context for job deployments
+        if settings.APPEND_SECURITY_CONTEXT and settings.APPEND_SECURITY_CONTEXT.lower() == "true":
+            add_security_context_command = (
+                f"sed -i '/serviceAccountName: api-gateway-sa/a\\"
+                f"      securityContext:\\n"
+                f"        fsGroup: {settings.SECURITY_CONTEXT_FSGROUP}\\n"
+                f"        fsGroupChangePolicy: \"OnRootMismatch\"' "
+                f"{kjob_tpl}"
+            )
+            security_context_output = subprocess.check_output(
+                add_security_context_command, shell=True
+            )
+            logger.info("Security context added for job: " + str(security_context_output))
+
         replace_id_output = subprocess.check_output(
             replace_dataset_id_command, shell=True
         )
@@ -2430,7 +2469,11 @@ async def retrieve_dataset(
         404: Dataset Not Found
     """
     user = auth[0]
-    item = dataset_crud.get_by_id(db=db, item_id=dataset_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
+    item = db.query(GeoDataset).filter(and_(GeoDataset.id == dataset_id, visibility_filter)).first()
     if not item:
         raise HTTPException(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}
