@@ -1,7 +1,7 @@
 # © Copyright IBM Corporation 2025
 # SPDX-License-Identifier: Apache-2.0
 
-
+# ruff: noqa: E501
 from enum import Enum
 from typing import Any, Literal, Optional, Union
 
@@ -312,7 +312,8 @@ class LossFunction(BaseModel):
     type : Optional[str]
         The type of loss function to be used. Defaults to "CrossEntropyLoss".
     avg_non_ignore : bool
-        If True, the loss is averaged only over non-ignored targets, where the labels are present. Ignored targets (e.g., missing labels) are excluded from the averaging. Defaults to True.
+        If True, the loss is averaged only over non-ignored targets, where the labels are present.
+        Ignored targets (e.g., missing labels) are excluded from the averaging. Defaults to True.
 
     Examples
     --------
@@ -328,7 +329,8 @@ class LossFunction(BaseModel):
     )
     avg_non_ignore: bool = Field(
         default=True,
-        description="The loss is only averaged over non-ignored targets (ignored targets are usually where labels are missing in the dataset) if this is True",
+        description="The loss is only averaged over non-ignored targets"
+        "(ignored targets are usually where labels are missing in the dataset) if this is True",
     )
 
 
@@ -339,7 +341,8 @@ class AuxLossFunction(LossFunction):
     Attributes
     ----------
     loss_weight : Optional[float]
-        The weight to apply to the auxiliary loss. This controls the contribution of this loss to the total loss. Defaults to 0.2.
+        The weight to apply to the auxiliary loss.
+        This controls the contribution of this loss to the total loss. Defaults to 0.2.
 
     Examples
     --------
@@ -543,9 +546,11 @@ class DataLoading(BaseModel):
     --------
     Create a DataLoading object:
 
-    >>> custom_data_loading = DataLoading(batch_size=16, workers_per_gpu=4, random_flip=1, bands=['RED', 'GREEN', 'BLUE'], tuning_bands=['GREEN', 'BLUE'])
+    >>> custom_data_loading = DataLoading(batch_size=16, workers_per_gpu=4, random_flip=1,
+    bands=['RED', 'GREEN', 'BLUE'], tuning_bands=['GREEN', 'BLUE'])
     >>> print(custom_data_loading)
-    DataLoading(batch_size=16, bands=['RED', 'GREEN', 'BLUE'], workers_per_gpu=4, random_flip=1, tuning_bands=['GREEN', 'BLUE'])
+    DataLoading(batch_size=16, bands=['RED', 'GREEN', 'BLUE'], workers_per_gpu=4,
+    random_flip=1, tuning_bands=['GREEN', 'BLUE'])
     """
 
     batch_size: Optional[int] = None
@@ -567,7 +572,6 @@ class DataLoading(BaseModel):
     norm_means: Optional[list[float]] = None
     norm_stds: Optional[list[float]] = None
     model_config = {"extra": "allow"}
-    
 
 
 class Runner(BaseModel):
@@ -691,7 +695,6 @@ class TiledInferenceParameters(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def check_all_or_none(cls, model):
-
         relevant_fields = [
             "h_crop",
             "h_stride",
@@ -787,7 +790,8 @@ class BaseModelNecks(BaseModel):
 
 class AuxiliaryHead(DecodeHead):
     """
-    Auxiliary head used in a neural network model, extending the main decode head, and including an auxiliary loss function.
+    Auxiliary head used in a neural network model, extending the main decode head,
+    and including an auxiliary loss function.
 
     Attributes
     ----------
@@ -1054,7 +1058,6 @@ class TuneTemplateParameters(
 
     @model_validator(mode="before")
     def update_fields_after_validation(cls, values):
-
         data = values.get("data", {})
         model = values.get("model", {})
 
@@ -1084,3 +1087,11 @@ class TuneTemplateParameters(
 
         values.update(data)
         return values
+
+
+class JobState(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    FAILED = "failed"
+    SUCCEEDED = "succeeded"
+    UNKNOWN = "unknown"

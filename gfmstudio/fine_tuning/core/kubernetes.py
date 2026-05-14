@@ -10,7 +10,6 @@ import subprocess
 import uuid
 from subprocess import PIPE, Popen
 
-import backoff
 import yaml
 from jinja2 import Template
 from kubernetes import client, config
@@ -19,6 +18,7 @@ from kubernetes.client.rest import ApiException
 from gfmstudio.config import BASE_DIR, settings
 from gfmstudio.fine_tuning import schemas
 from gfmstudio.fine_tuning.core.procs import ProcessError, check_output
+from gfmstudio.fine_tuning.core.schema import JobState
 from gfmstudio.log import logger
 
 # This lock prevents two coros trying to run kubectl login at the same time
@@ -555,19 +555,26 @@ async def get_aggregate_job_and_pod_status(job_name: str) -> str:
         The status of the job.
     """
     condition = await get_job_conditions(job_name)
-    terminal_statuses = (
-        f"{settings.K8S_JOB_SUCCESS_STATUSES},{settings.K8S_JOB_FAILURE_STATUSES}"
-    )
-    terminal_statuses = [s.strip().lower() for s in terminal_statuses.split(",")]
 
-    if condition in terminal_statuses:
-        return condition
+    if condition:
+        condition_lower = condition.lower()
+        if condition_lower in settings.job_succes_list:
+            return JobState.SUCCEEDED
+        elif condition_lower in settings.job_failure_list:
+            return JobState.FAILED
 
     # Job exists but no terminal condition → check pod
     pod_phase = await get_pod_phase(job_name)
-    if pod_phase:
-        return pod_phase
-    return "Unknown"
+    if not pod_phase:
+        return JobState.UNKNOWN
+
+    pod_phase_map = {
+        "running": JobState.RUNNING,
+        "pending": JobState.PENDING,
+        "succeeded": JobState.SUCCEEDED,
+        "failed": JobState.FAILED,
+    }
+    return pod_phase_map.get(pod_phase.lower(), JobState.UNKNOWN)
 
 
 async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
@@ -597,7 +604,7 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
     # Direct resolution via unified status function
     status = await get_aggregate_job_and_pod_status(kjob_id)
 
-    if status not in ["Running"]:
+    if status in [JobState.SUCCEEDED, JobState.FAILED]:
         return status, kjob_id
 
     else:

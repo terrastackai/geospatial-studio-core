@@ -15,6 +15,7 @@ from gfmstudio.fine_tuning.core.kubernetes import (
     deploy_hpo_tuning_job,
     deploy_tuning_job,
 )
+from gfmstudio.fine_tuning.core.schema import JobState
 from gfmstudio.fine_tuning.utils.webhook_event_handlers import (
     handle_dataset_factory_webhooks,
     handle_fine_tuning_webhooks,
@@ -80,32 +81,22 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
             logger.debug(
                 f"{ftune_id}: Job not found, assuming completed and cleaned up"
             )
-            return "Completed"
+            return JobState.SUCCEEDED
         # Unexpected error, retry with exponential backoff
         logger.warning(f"{ftune_id}: Error checking job status, will retry: {exc}")
         raise self.retry(exc=exc, countdown=min(2**self.request.retries * 30, max_wait))
 
-    if k8s_job_status is None:
+    if k8s_job_status in [None, JobState.UNKNOWN]:
         logger.debug(
-            f"{ftune_id}: Job status is None, assuming completed and cleaned up"
+            f"{ftune_id}: Job status is missing/unknown, assuming completed and cleaned up"
         )
-        return "Completed"
+        return JobState.SUCCEEDED
 
-    if k8s_job_status == "Unknown":
-        logger.info(
-            f"{ftune_id}: Job status is Unknown (resources deleted), assuming completed and cleaned up"
-        )
-        return "Completed"
-
-    terminal_statuses = (
-        f"{settings.K8S_JOB_SUCCESS_STATUSES},{settings.K8S_JOB_FAILURE_STATUSES}"
-    )
-    terminal_statuses = [s.strip().lower() for s in terminal_statuses.split(",")]
-    if k8s_job_status in terminal_statuses:
+    if k8s_job_status in [JobState.SUCCEEDED, JobState.FAILED]:
         logger.info(f"{ftune_id}: Job finished with status: { k8s_job_status }")
         return k8s_job_status
 
-    if k8s_job_status == "Running":
+    if k8s_job_status == JobState.RUNNING:
         try:
             asyncio.run(update_tune_status(ftune_id, "In_progress"))
         except Exception as e:

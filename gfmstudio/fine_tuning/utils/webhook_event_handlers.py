@@ -26,10 +26,7 @@ from gfmstudio.log import logger
 tune_crud = crud.ItemCrud(model=Tunes)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 
-terminal_statuses = (
-    f"{settings.K8S_JOB_SUCCESS_STATUSES},{settings.K8S_JOB_FAILURE_STATUSES}"
-)
-terminal_statuses = [s.strip().lower() for s in terminal_statuses.split(",")]
+job_terminal_statuses = settings.job_succes_list + settings.job_failure_list
 
 
 async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
@@ -85,7 +82,7 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
     # delete resources
     k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
-    while k8s_job_status_lower not in terminal_statuses:
+    while k8s_job_status_lower not in job_terminal_statuses:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
             logger.error(
@@ -128,7 +125,7 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
 
     k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
-    while k8s_job_status_lower not in terminal_statuses:
+    while k8s_job_status_lower not in job_terminal_statuses:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
             logger.error(
