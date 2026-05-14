@@ -383,6 +383,8 @@ async def deploy_tuning_job(
             str(settings.RESOURCE_REQUEST_Memory),
             str(settings.RESOURCE_REQUEST_GPU),
             str(settings.RUN_TERRATORCH_TEST),
+            str(settings.APPEND_SECURITY_CONTEXT),
+            str(settings.SECURITY_CONTEXT_FSGROUP),
         ]
         logger.info(f"Executing command: {command}")
 

@@ -50,6 +50,8 @@ export RESOURCE_REQUEST_Memory=${14:-24}
 export RESOURCE_REQUEST_GPU=${15:-1}
 export RUN_TERRATORCH_TEST=${16}
 export NODE_AFFINITY=${17}
+export APPEND_SECURITY_CONTEXT=${18:-false}
+export SECURITY_CONTEXT_FSGROUP=${19:-2000}
 
 # Replace the variable and properly indent the content
 sed '/\${TUNING_CONFIG_YAML}/{
@@ -67,6 +69,12 @@ if [ -z "$IMAGE_PULL_SECRET" ]; then
     echo "IMAGE_PULL_SECRET is empty, removing imagePullSecrets from manifest"
     # Remove the imagePullSecrets section (handles both single-line and multi-line formats)
     sed -i '/imagePullSecrets:/,/^[^ ]/{ /imagePullSecrets:/d; /- name:/d; /^[^ ]/!d; }' "/tmp/$output_manifest_yaml"
+fi
+
+# Add security context if APPEND_SECURITY_CONTEXT is true
+if [ "$APPEND_SECURITY_CONTEXT" = "true" ] || [ "$APPEND_SECURITY_CONTEXT" = "True" ]; then
+    echo "Adding pod security context with fsGroup: $SECURITY_CONTEXT_FSGROUP"
+    sed -i '/serviceAccountName: api-gateway-sa/a\      securityContext:\n        fsGroup: '"$SECURITY_CONTEXT_FSGROUP"'\n        fsGroupChangePolicy: "OnRootMismatch"' "/tmp/$output_manifest_yaml"
 fi
 
 # kubectl apply --dry-run=client -f "/tmp/$output_manifest_yaml"
