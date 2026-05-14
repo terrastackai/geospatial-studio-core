@@ -635,9 +635,9 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
                 # If still no status after retry, treat as Running
                 if result and result[0] is None:
                     logger.info(
-                        f"{job_name}: Job exists but no status yet, treating as Running"
+                        f"{job_name}: Job exists but no status yet, treating as {JobState.RUNNING}"
                     )
-                    return "Running", job_name
+                    return JobState.RUNNING, job_name
                 return result if result else ("Running", job_name)
 
         # Job exists but has no conditions - verify it exists and check pod status
@@ -655,7 +655,7 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
             # Job exists but no status conditions yet
             # Check if we should verify the pod phase
             logger.info(f"{kjob_id}: Job exists but no status yet → Running")
-            return "Running", kjob_id
+            return JobState.RUNNING, kjob_id
         # Job doesn't exist at all
         logger.warning(f"{kjob_id}: Job not found in cluster")
         return None, tune_id

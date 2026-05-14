@@ -97,6 +97,7 @@ def monitor_k8_job_completion_task(self, ftune_id: str):
         return k8s_job_status
 
     if k8s_job_status == JobState.RUNNING:
+        logger.info(f"updating status to in_progress for job {ftune_id}")
         try:
             asyncio.run(update_tune_status(ftune_id, "In_progress"))
         except Exception as e:
