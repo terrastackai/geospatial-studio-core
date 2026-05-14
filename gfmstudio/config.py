@@ -296,6 +296,7 @@ class Settings(BaseSettings):
         extra="allow", case_sensitive=True, env_file=os.path.join(BASE_DIR, ".env")
     )
     APPEND_SECURITY_CONTEXT: Optional[str] = Field(default="false")
+    SECURITY_CONTEXT_FSGROUP: Optional[str] = Field(default="1000")
 
     ####################
     # AMO

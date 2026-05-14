@@ -2411,7 +2411,7 @@ async def onboard_dataset(
             add_security_context_command = (
                 f"sed -i '/serviceAccountName: api-gateway-sa/a\\"
                 f"      securityContext:\\n"
-                f"        fsGroup: 1000\\n"
+                f"        fsGroup: {settings.SECURITY_CONTEXT_FSGROUP}\\n"
                 f"        fsGroupChangePolicy: \"OnRootMismatch\"' "
                 f"{kjob_tpl}"
             )
