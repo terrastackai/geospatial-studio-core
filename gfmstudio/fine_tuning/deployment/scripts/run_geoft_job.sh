@@ -49,9 +49,9 @@ export RESOURCE_REQUEST_CPU=${13:-6}
 export RESOURCE_REQUEST_Memory=${14:-24}
 export RESOURCE_REQUEST_GPU=${15:-1}
 export RUN_TERRATORCH_TEST=${16}
-export NODE_AFFINITY=${17}
-export APPEND_SECURITY_CONTEXT=${18:-false}
-export SECURITY_CONTEXT_FSGROUP=${19:-2000}
+export APPEND_SECURITY_CONTEXT=${17:-false}
+export SECURITY_CONTEXT_FSGROUP=${18:-2000}
+export NODE_AFFINITY=${19}
 
 # Replace the variable and properly indent the content
 sed '/\${TUNING_CONFIG_YAML}/{
