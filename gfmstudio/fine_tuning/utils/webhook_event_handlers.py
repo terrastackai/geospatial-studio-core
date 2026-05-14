@@ -58,6 +58,7 @@ async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
                 item={"status": new_status},
                 protected=False,
             )
+            session.commit()
             logger.info(f"{tune_id}: Updated status from Pending to {new_status}")
     except Exception as e:
         logger.warning(f"{tune_id}: Failed to update status: {e}")
