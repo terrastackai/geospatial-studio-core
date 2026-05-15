@@ -59,9 +59,6 @@ spec:
         - name: mount-data
           persistentVolumeClaim:
             claimName: gfm-ft-data-pvc
-        - name: mount-models
-          persistentVolumeClaim:
-            claimName: gfm-ft-models-pvc
         - name: mount-geotunes
           persistentVolumeClaim:
             claimName: gfm-ft-files-pvc
@@ -94,8 +91,6 @@ spec:
           volumeMounts:
             - name: mount-data
               mountPath: /ft-data
-            - name: mount-models
-              mountPath: /terratorch/gfm_models
             - name: mount-geotunes
               mountPath: /geotunes
             - name: dshm

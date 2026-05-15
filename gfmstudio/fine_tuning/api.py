@@ -30,7 +30,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import and_, literal_column
+from sqlalchemy import and_, literal_column, or_
 from sqlalchemy.orm import Session
 
 from gfmstudio.auth import authorizer
@@ -68,6 +68,8 @@ from gfmstudio.fine_tuning.utils.dataset_handlers import (
 )
 from gfmstudio.fine_tuning.utils.tune_handlers import get_rendered_tuning_template
 from gfmstudio.fine_tuning.utils.webhook_event_handlers import upload_logs_cos
+from gfmstudio.groups.models import ArtifactType
+from gfmstudio.groups.visibility import build_visibility_filter
 from gfmstudio.inference.v2.models import Inference
 from gfmstudio.inference.v2.models import Model as InferenceModel
 from gfmstudio.inference.v2.schemas import InferenceCreateInput, InferenceGetResponse
@@ -406,26 +408,25 @@ async def list_tunes(
     user = auth[0]
     qp_filters = {}
     search_filters = {}
-    ignore_user_check = False
+    filter_expr = None
     if name:
         search_filters["name"] = name
     if status:
         qp_filters["status"] = status
-    if shared is not None:
-        # TODO: Add logic to mark tunes as sharable and update this filter
-        # we currently assume that for a tune to be shared it was
-        # created_by the system user.
-        qp_filters["created_by"] = settings.DEFAULT_SYSTEM_USER if shared else user
-        ignore_user_check = True
+
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(Tunes, user, ArtifactType.tune, db)
+    filter_expr = visibility_filter
 
     count, items = tunes_crud.get_all(
         db=db,
         filters=qp_filters,
         search=search_filters,
+        filter_expr=filter_expr,
         limit=limit,
         skip=skip,
         user=user,
-        ignore_user_check=ignore_user_check,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -467,7 +468,9 @@ async def retrieve_tune(
         404: Tune not Found
     """
     user = auth[0]
-    item = tunes_crud.get_by_id(db=db, item_id=tune_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(Tunes, user, ArtifactType.tune, db)
+    item = db.query(Tunes).filter(and_(Tunes.id == tune_id, visibility_filter)).first()
     if not item:
         raise HTTPException(status_code=404, detail="Tune not found")
 
@@ -1152,7 +1155,7 @@ async def try_tuned_model(
     )
 
     # Update the tune with user updated train options.
-    if user == tune_meta.created_by:
+    if user.lower() == tune_meta.created_by.lower():
         tunes_crud.update(
             db=db,
             item_id=str(tune_id),
@@ -1348,9 +1351,7 @@ async def get_bases(
     user = auth[0]
     qp_filters = {}
     search_filters = {}
-    filter_expr = None
     filter_expr_list = []
-    ignore_user_check = False
     if name:
         search_filters["name"] = name
     if status:
@@ -1360,14 +1361,14 @@ async def get_bases(
             BaseModels.model_params["model_category"].astext
             == str(model_category).lower()
         )
-    if shared is not None:
-        # TODO: Add logic to mark tunes as sharable and update this filter
-        # we currently assume that for a tune to be shared it was
-        # created_by the system user.
-        qp_filters["created_by"] = settings.DEFAULT_SYSTEM_USER if shared else user
-        ignore_user_check = True
-    if filter_expr_list:
-        filter_expr = and_(*filter_expr_list)
+
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
+    filter_expr_list.append(visibility_filter)
+
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = bases_crud.get_all(
         db=db,
         filters=qp_filters,
@@ -1376,7 +1377,7 @@ async def get_bases(
         limit=limit,
         skip=skip,
         user=user,
-        ignore_user_check=ignore_user_check,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -1447,7 +1448,11 @@ async def get_base_by_id(
         404: Base model not found
     """
     user = auth[0]
-    data = bases_crud.get_by_id(db=db, item_id=base_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
+    data = db.query(BaseModels).filter(and_(BaseModels.id == base_id, visibility_filter)).first()
     if not data:
         raise HTTPException(404, detail=f"Base Model {base_id} not found")
 
@@ -1555,17 +1560,24 @@ async def list_tune_templates(
     user = auth[0]
     qp_filters = {}
     search_filters = {}
-    filter_expr = None
+    filter_expr_list = []
     if name:
         search_filters["name"] = name
     if model_category:
-        filter_expr = (
+        filter_expr_list.append(
             TuneTemplate.extra_info["model_category"].astext
             == str(model_category).lower()
         )
     if purpose:
         qp_filters["purpose"] = purpose
 
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    filter_expr_list.append(visibility_filter)
+
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = tune_template_crud.get_all(
         db=db,
         filters=qp_filters,
@@ -1574,6 +1586,7 @@ async def list_tune_templates(
         limit=limit,
         skip=skip,
         user=user,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -1667,7 +1680,15 @@ async def retrieve_task(
         404: Task not found
     """
     user = auth[0]
-    task = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1705,7 +1726,11 @@ async def get_task_content_template(
         404: Task not found
     """
     user = auth[0]
-    data = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    data = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
     if not data:
         raise HTTPException(404, detail=f"Task {task_id} not found")
     content = base64.b64decode(data.content or "")
@@ -1750,7 +1775,11 @@ async def update_task_schema(
         412: Validation Error: Other validation errors
     """
     user = auth[0]
-    task = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1979,19 +2008,26 @@ async def list_datasets(
 ):
     user = auth[0]
     filter_fields = {"version": "v2"}
-    filter_expr = None
+    filter_expr_list = []
     search_filters = {}
     if dataset_name:
         search_filters["dataset_name"] = dataset_name
     if purpose:
-        filter_expr = GeoDataset.purpose.in_(purpose)
+        filter_expr_list.append(GeoDataset.purpose.in_(purpose))
     if status:
         filter_fields["status"] = status
 
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
+    filter_expr_list.append(visibility_filter)
+
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = dataset_crud.get_all(
         db,
         user=user,
-        ignore_user_check=False,
+        ignore_user_check=True,
         limit=limit,
         skip=skip,
         filters=filter_fields,
@@ -2369,6 +2405,21 @@ async def onboard_dataset(
             create_job_deployment_file_command, shell=True
         )
         logger.info("Job deployment file created " + str(create_deployment_file_output))
+
+        # Add security context for job deployments
+        if settings.APPEND_SECURITY_CONTEXT and settings.APPEND_SECURITY_CONTEXT.lower() == "true":
+            add_security_context_command = (
+                f"sed -i '/serviceAccountName: api-gateway-sa/a\\"
+                f"      securityContext:\\n"
+                f"        fsGroup: {settings.SECURITY_CONTEXT_FSGROUP}\\n"
+                f"        fsGroupChangePolicy: \"OnRootMismatch\"' "
+                f"{kjob_tpl}"
+            )
+            security_context_output = subprocess.check_output(
+                add_security_context_command, shell=True
+            )
+            logger.info("Security context added for job: " + str(security_context_output))
+
         replace_id_output = subprocess.check_output(
             replace_dataset_id_command, shell=True
         )
@@ -2418,7 +2469,11 @@ async def retrieve_dataset(
         404: Dataset Not Found
     """
     user = auth[0]
-    item = dataset_crud.get_by_id(db=db, item_id=dataset_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
+    item = db.query(GeoDataset).filter(and_(GeoDataset.id == dataset_id, visibility_filter)).first()
     if not item:
         raise HTTPException(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}
