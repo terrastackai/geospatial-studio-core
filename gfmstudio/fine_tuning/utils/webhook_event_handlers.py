@@ -27,7 +27,7 @@ tune_crud = crud.ItemCrud(model=Tunes)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 
 job_terminal_statuses = [
-    status.lower() for status in (settings.job_succes_list + settings.job_failure_li)
+    status.lower() for status in (settings.job_succes_list + settings.job_failure_list)
 ]
 
 
