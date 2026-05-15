@@ -69,10 +69,6 @@ class TerrakitPVCacheManager:
         # Use existing redis_client singleton
         self.redis_client = redis_client
 
-        if not self.enabled:
-            logger.info("📦 Cache is disabled")
-            return
-
         # Verify Redis connection
         try:
             if self.redis_client:
@@ -84,6 +80,10 @@ class TerrakitPVCacheManager:
         except Exception as e:
             logger.warning(f"❌ Redis connection failed: {e} - cache disabled")
             self.enabled = False
+
+        if not self.enabled:
+            logger.info("📦 Cache is disabled")
+            return
 
         # Verify PV is mounted and writable
         try:
