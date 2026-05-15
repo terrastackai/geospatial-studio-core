@@ -242,7 +242,7 @@ async def handle_fine_tuning_webhooks(
             logger.debug(
                 f"{tune_id}: Tuning Task Errored and resources already deleted."
             )
-        await free_k8s_resources(tune_id)
+        asyncio.create_task(free_k8s_resources(tune_id))
 
     try:
         tune_id = str(event.detail["tune_id"])
