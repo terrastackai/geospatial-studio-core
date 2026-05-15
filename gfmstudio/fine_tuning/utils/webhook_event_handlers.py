@@ -26,7 +26,9 @@ from gfmstudio.log import logger
 tune_crud = crud.ItemCrud(model=Tunes)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 
-job_terminal_statuses = settings.job_succes_list + settings.job_failure_list
+job_terminal_statuses = [
+    status.lower() for status in (settings.job_succes_list + settings.job_failure_li)
+]
 
 
 async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
