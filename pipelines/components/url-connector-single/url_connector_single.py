@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 
 from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
 from gfm_data_processing.exceptions import GfmDataProcessingException
@@ -136,7 +137,11 @@ def url_connector_single():
         new_output_files = []
 
         # If multimodal
-        if len(task_dict["url"]) > 1 and expects_multi_input(inference_dict):
+        if (
+            isinstance(task_dict["url"], list)
+            and len(task_dict["url"]) > 1
+            and expects_multi_input(inference_dict)
+            ):
             # Download multimodal data and save the file names
             logger.info(f"********* Starting data pull multimodal data for task: {task_id} **********")
 
@@ -144,7 +149,12 @@ def url_connector_single():
                 # Add date in the task_dict
                 if "date" not in task_dict:
                     task_dict["date"] = []
-                from datetime import datetime
+                elif isinstance(task_dict["date"], str):
+                    task_dict["date"] = [task_dict["date"]]
+                elif not isinstance(task_dict["date"], list):
+                    raise GfmDataProcessingException(
+                        f"Expected task_dict['date'] to be list or string, got {type(task_dict['date'])}"
+                    )
 
                 task_dict["date"].append(datetime.now().strftime("%Y-%m-%d"))
                 # Check the URL and download the data
