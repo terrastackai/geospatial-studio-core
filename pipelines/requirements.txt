@@ -30,6 +30,7 @@ wget
 xarray
 redis
 python-redis-lock>=4.0.0
+backoff>=2.2.1
 
 
   
