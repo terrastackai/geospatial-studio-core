@@ -334,39 +334,6 @@ class TerrakitPVCacheManager:
             logger.error(f"❌ Failed to cache files: {e}")
             return False
 
-    def get_or_wait_for_cache(
-        self, lock, cache_key: str, timeout: int = 600
-    ) -> Optional[Dict]:
-        """
-        Get cached files or wait if another process is fetching.
-
-        Args:
-            cache_key: Cache key to check
-            timeout: Maximum time to wait (seconds)
-
-        Returns:
-            Cached data dict or None if not available
-        """
-        if not self.enabled:
-            return None
-
-        cached_data = self.get_cached_files(cache_key)
-        if cached_data:
-            logger.info(f"🎯 Cache hit: {cache_key[:16]}...")
-            return cached_data
-
-        # Check if someone else is fetching (lock exists)
-        lock_exists = lock.locked()
-
-        if lock_exists:
-            logger.info(
-                f"⏳ Another process is fetching {cache_key[:16]}..., waiting..."
-            )
-            return self._wait_for_cache_to_appear(cache_key, timeout)
-
-        # No lock and no cache - caller should fetch
-        return None
-
     def _wait_for_cache_to_appear(self, cache_key: str, timeout: int) -> Optional[Dict]:
         """
         Poll for cache to appear while another process fetches.

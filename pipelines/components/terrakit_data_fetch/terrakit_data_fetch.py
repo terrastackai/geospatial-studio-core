@@ -274,34 +274,6 @@ def terrakit_data_fetch():
                 transform=model_input_data_spec.get("transform"),
             )
 
-            # cached_data = cache_manager.get_or_wait_for_cache(cache_key, timeout=600)
-
-            # if cached_data:
-            #     # Cache hit - copy from cache to task folder
-            #     logger.info(f"🎯 Using cached data for {modality_tag} on {data_date}")
-
-            #     original_pv_path = cached_data["original_pv_path"]
-            #     imputed_pv_path = cached_data["imputed_pv_path"]
-
-            #     # Copy (or hardlink) from cache to task folder
-            #     success_original = cache_manager.copy_cached_file(
-            #         original_pv_path, save_filepath
-            #     )
-            #     success_imputed = cache_manager.copy_cached_file(
-            #         imputed_pv_path, imputed_file_path
-            #     )
-
-            #     if success_original and success_imputed:
-            #         original_input_images += [save_filepath]
-            #         imputed_input_images += [imputed_file_path]
-            #         logger.info("✅ Successfully retrieved cached files")
-            #         continue  # Skip to next modality
-            #     else:
-            #         logger.warning(
-            #             "⚠️ Failed to copy cached files, fetching from Terrakit..."
-            #         )
-
-            # Cache miss or copy failed - fetch from Terrakit
             lock = cache_manager.acquire_fetch_lock(cache_key)
 
             if lock:
@@ -310,10 +282,7 @@ def terrakit_data_fetch():
                 )
 
                 try:
-                    cached_data = cache_manager.get_or_wait_for_cache(
-                        lock, cache_key, timeout=600
-                    )
-                    # cached_data = cache_manager.get_cached_files(cache_key)
+                    cached_data = cache_manager.get_cached_files(cache_key)
                     if cached_data:
                         original_pv_path = cached_data["original_pv_path"]
                         imputed_pv_path = cached_data["imputed_pv_path"]
