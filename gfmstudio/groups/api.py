@@ -1,0 +1,1096 @@
+# © Copyright IBM Corporation 2025
+# SPDX-License-Identifier: Apache-2.0
+
+
+from typing import List, Optional, Union
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import String, and_, cast, func
+from sqlalchemy.orm import Session
+
+from gfmstudio.auth.authorizer import auth_handler
+from gfmstudio.common.api import utils
+from gfmstudio.fine_tuning.models import BaseModels, GeoDataset, Tunes, TuneTemplate
+from gfmstudio.groups.models import (
+    ArtifactPermission,
+    ArtifactType,
+    Group,
+    GroupMember,
+    GroupRole,
+)
+from gfmstudio.groups.schemas import (
+    ArtifactPermissionGrant,
+    ArtifactPermissionOut,
+    ArtifactSharingDetail,
+    ArtifactSharingListResponse,
+    GroupCreate,
+    GroupMemberAdd,
+    GroupOut,
+    GroupSharingInfo,
+    MemberRoleUpdate,
+)
+from gfmstudio.inference.v2.models import Inference, Model
+
+router = APIRouter(prefix="/groups", tags=["Groups"])
+artifacts_router = APIRouter(prefix="/artifacts", tags=["Artifacts"])
+
+# Mapping of artifact types to their SQLAlchemy model classes
+ARTIFACT_TYPE_TO_MODEL = {
+    ArtifactType.dataset: GeoDataset,
+    ArtifactType.tune: Tunes,
+    ArtifactType.backbone: BaseModels,
+    ArtifactType.model: Model,
+    ArtifactType.task_template: TuneTemplate,
+    ArtifactType.inference_run: Inference,
+}
+
+
+def _convert_artifact_id_for_query(
+    artifact_id: Union[UUID, str], model_class
+) -> Union[UUID, str]:
+    """
+    Convert artifact_id to the appropriate type for querying based on the model's ID column type.
+    
+    This function inspects the target model's ID column type and converts the artifact_id
+    accordingly:
+    - If the model uses UUID IDs and artifact_id is a string, attempts UUID conversion
+    - If the model uses string IDs and artifact_id is a UUID, converts to string
+    - Returns the artifact_id unchanged if already the correct type
+    
+    Parameters
+    ----------
+    artifact_id : Union[UUID, str]
+        The artifact ID to convert (can be UUID object or string)
+    model_class : type
+        The SQLAlchemy model class to query
+        
+    Returns
+    -------
+    Union[UUID, str]
+        The artifact_id converted to match the model's ID column type
+        
+    Examples
+    --------
+    >>> # For UUID-based model (e.g., Model, BaseModels)
+    >>> _convert_artifact_id_for_query("550e8400-e29b-41d4-a716-446655440000", Model)
+    UUID('550e8400-e29b-41d4-a716-446655440000')
+    
+    >>> # For string-based model (e.g., GeoDataset, Tunes)
+    >>> _convert_artifact_id_for_query(UUID("550e8400-e29b-41d4-a716-446655440000"), GeoDataset)
+    '550e8400-e29b-41d4-a716-446655440000'
+    """
+    from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
+    
+    # Get the ID column from the model's table
+    id_column = model_class.__table__.columns.get('id')
+    if id_column is None:
+        # Fallback: return artifact_id as-is if no ID column found
+        return artifact_id
+    
+    # Check if the column type is PostgreSQL UUID
+    is_uuid_column = isinstance(id_column.type, PostgresUUID)
+    
+    if is_uuid_column:
+        # Model expects UUID type - convert string to UUID if needed
+        if isinstance(artifact_id, str):
+            try:
+                return UUID(artifact_id)
+            except ValueError:
+                # Invalid UUID string - return as-is and let the query fail naturally
+                # This provides better error messages from the database
+                return artifact_id
+        # Already a UUID object
+        return artifact_id
+    else:
+        # Model expects string type - convert UUID to string if needed
+        if isinstance(artifact_id, UUID):
+            return str(artifact_id)
+        # Already a string
+        return artifact_id
+
+
+def _require_group_owner(group_id: UUID, user_email: str, db: Session) -> GroupMember:
+    """
+    Helper function to verify that a user is an owner of a group.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID to check
+    user_email : str
+        The user's email address
+    db : Session
+        Database session
+
+    Returns
+    -------
+    GroupMember
+        The group member record if user is an owner
+
+    Raises
+    ------
+    HTTPException
+        403 if user is not an owner of the group
+    """
+    member = (
+        db.query(GroupMember)
+        .filter(
+            and_(
+                GroupMember.group_id == group_id,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
+            )
+        )
+        .first()
+    )
+
+    if not member or member.role != GroupRole.owner:
+        raise HTTPException(
+            status_code=403,
+            detail="Only group owners can perform this action",
+        )
+
+    return member
+
+
+def _require_group_member(group_id: UUID, user_email: str, db: Session) -> GroupMember:
+    """
+    Helper function to verify that a user is a member of a group.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID to check
+    user_email : str
+        The user's email address
+    db : Session
+        Database session
+
+    Returns
+    -------
+    GroupMember
+        The group member record
+
+    Raises
+    ------
+    HTTPException
+        403 if user is not a member of the group
+    """
+    member = (
+        db.query(GroupMember)
+        .filter(
+            and_(
+                GroupMember.group_id == group_id,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
+            )
+        )
+        .first()
+    )
+
+    if not member:
+        raise HTTPException(
+            status_code=403,
+            detail="You must be a member of this group to perform this action",
+        )
+
+    return member
+
+
+# ***************************************************
+# Group Management
+# ***************************************************
+@router.post("/", response_model=GroupOut, status_code=201)
+async def create_group(
+    group: GroupCreate,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Create a new group. The creator is automatically added as an owner.
+
+    Parameters
+    ----------
+    group : GroupCreate
+        Group creation data
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+
+    Returns
+    -------
+    GroupOut
+        The created group with members
+    """
+    user_email = auth[0]
+
+    # Check if group name already exists
+    existing_group = db.query(Group).filter(Group.name == group.name).first()
+    if existing_group:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Group with name '{group.name}' already exists",
+        )
+
+    # Create the group
+    new_group = Group(
+        name=group.name,
+        description=group.description,
+        created_by=user_email,
+    )
+    db.add(new_group)
+    db.flush()
+
+    # Add creator as owner
+    creator_member = GroupMember(
+        group_id=new_group.id,
+        user_email=user_email,
+        role=GroupRole.owner,
+    )
+    db.add(creator_member)
+    db.commit()
+    db.refresh(new_group)
+
+    return new_group
+
+
+@router.get("/", response_model=List[GroupOut])
+async def list_groups(
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List all groups the current user belongs to.
+
+    Parameters
+    ----------
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+
+    Returns
+    -------
+    List[GroupOut]
+        List of groups the user is a member of
+    """
+    user_email = auth[0]
+
+    groups = (
+        db.query(Group)
+        .join(GroupMember)
+        .filter(func.lower(GroupMember.user_email) == func.lower(user_email))
+        .all()
+    )
+
+    return groups
+
+
+@router.get("/{group_id}", response_model=GroupOut)
+async def get_group(
+    group_id: UUID,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Get group details including members. User must be a member.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+
+    Returns
+    -------
+    GroupOut
+        The group details with members
+    """
+    user_email = auth[0]
+
+    # Verify user is a member
+    _require_group_member(group_id, user_email, db)
+
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    return group
+
+
+@router.delete("/{group_id}", status_code=204)
+async def delete_group(
+    group_id: UUID,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Delete a group and all associated data. Must be an owner.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    """
+    user_email = auth[0]
+
+    # Verify user is an owner
+    _require_group_owner(group_id, user_email, db)
+
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    db.delete(group)
+    db.commit()
+
+
+# ***************************************************
+# Member Management
+# ***************************************************
+@router.post("/{group_id}/members", response_model=GroupOut, status_code=201)
+async def add_member(
+    group_id: UUID,
+    member: GroupMemberAdd,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Add a user to the group. Only owners can add members.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    member : GroupMemberAdd
+        Member data to add
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+
+    Returns
+    -------
+    GroupOut
+        The updated group with members
+    """
+    user_email = auth[0]
+
+    # Verify user is an owner
+    _require_group_owner(group_id, user_email, db)
+
+    # Check if group exists
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    # Check if member already exists
+    existing_member = (
+        db.query(GroupMember)
+        .filter(
+            and_(
+                GroupMember.group_id == group_id,
+                func.lower(GroupMember.user_email) == func.lower(member.user_email),
+            )
+        )
+        .first()
+    )
+    if existing_member:
+        raise HTTPException(
+            status_code=400,
+            detail=f"User {member.user_email} is already a member of this group",
+        )
+
+    # Add new member
+    new_member = GroupMember(
+        group_id=group_id,
+        user_email=member.user_email,
+        role=member.role,
+    )
+    db.add(new_member)
+    db.commit()
+    db.refresh(group)
+
+    return group
+
+
+@router.delete("/{group_id}/members/{user_email}", status_code=204)
+async def remove_member(
+    group_id: UUID,
+    user_email: str,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Remove a member from the group.
+    Owners can remove anyone; members can remove themselves.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    user_email : str
+        Email of the user to remove
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    """
+    current_user_email = auth[0]
+
+    # Get the member to be removed
+    member_to_remove = (
+        db.query(GroupMember)
+        .filter(
+            and_(
+                GroupMember.group_id == group_id,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
+            )
+        )
+        .first()
+    )
+
+    if not member_to_remove:
+        raise HTTPException(status_code=404, detail="Member not found in this group")
+
+    # Check permissions: must be owner or removing self
+    current_member = (
+        db.query(GroupMember)
+        .filter(
+            and_(
+                GroupMember.group_id == group_id,
+                func.lower(GroupMember.user_email) == func.lower(current_user_email),
+            )
+        )
+        .first()
+    )
+
+    if not current_member:
+        raise HTTPException(
+            status_code=403,
+            detail="You must be a member of this group to perform this action",
+        )
+
+    # Allow if user is owner OR removing themselves (case-insensitive email comparison)
+    if (
+        current_member.role != GroupRole.owner
+        and user_email.lower() != current_user_email.lower()
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Only group owners can remove other members",
+        )
+
+    db.delete(member_to_remove)
+    db.commit()
+
+
+@router.put("/{group_id}/members/{user_email}/role", response_model=GroupOut)
+async def update_member_role(
+    group_id: UUID,
+    user_email: str,
+    role_update: MemberRoleUpdate,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Update a member's role. Only owners can update roles.
+    Cannot demote the last remaining owner.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    user_email : str
+        Email of the user whose role to update
+    role_update : MemberRoleUpdate
+        New role data
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+
+    Returns
+    -------
+    GroupOut
+        The updated group with members
+    """
+    current_user_email = auth[0]
+
+    # Verify current user is an owner
+    _require_group_owner(group_id, current_user_email, db)
+
+    # Get the member to update
+    member = (
+        db.query(GroupMember)
+        .filter(
+            and_(
+                GroupMember.group_id == group_id,
+                func.lower(GroupMember.user_email) == func.lower(user_email),
+            )
+        )
+        .first()
+    )
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found in this group")
+
+    # If demoting from owner to member, check if this is the last owner
+    if member.role == GroupRole.owner and role_update.role == GroupRole.member:
+        owner_count = (
+            db.query(func.count(GroupMember.user_email))
+            .filter(
+                and_(
+                    GroupMember.group_id == group_id,
+                    GroupMember.role == GroupRole.owner,
+                    func.lower(GroupMember.user_email) != func.lower(user_email),
+                )
+            )
+            .scalar()
+        )
+
+        if owner_count == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot demote the last owner. Promote another member to owner first.",
+            )
+
+    # Update the role
+    member.role = role_update.role
+    db.commit()
+
+    # Refresh and return the group
+    group = db.query(Group).filter(Group.id == group_id).first()
+    db.refresh(group)
+
+    return group
+
+
+# ***************************************************
+# Artifact Permissions
+# ***************************************************
+@router.get("/{group_id}/artifacts", response_model=List[ArtifactPermissionOut])
+async def list_group_artifacts(
+    group_id: UUID,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List all artifacts shared with this group. User must be a member.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+
+    Returns
+    -------
+    List[ArtifactPermissionOut]
+        List of artifact permissions for this group
+    """
+    user_email = auth[0]
+
+    # Verify user is a member
+    _require_group_member(group_id, user_email, db)
+
+    permissions = (
+        db.query(ArtifactPermission)
+        .filter(ArtifactPermission.group_id == group_id)
+        .all()
+    )
+
+    return permissions
+
+
+@router.post(
+    "/{group_id}/artifacts", response_model=ArtifactPermissionOut, status_code=201
+)
+async def grant_artifact_permission(
+    group_id: UUID,
+    permission: ArtifactPermissionGrant,
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Share an artifact with the group. The caller must own the artifact.
+    Only owners can share artifacts.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    permission : ArtifactPermissionGrant
+        Artifact permission data
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+
+    Returns
+    -------
+    ArtifactPermissionOut
+        The created artifact permission
+    """
+    user_email = auth[0]
+
+    # Verify user is an owner
+    _require_group_owner(group_id, user_email, db)
+
+    # Verify group exists
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    # Get the model class for this artifact type
+    model_class = ARTIFACT_TYPE_TO_MODEL.get(permission.artifact_type)
+    if not model_class:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid artifact type: {permission.artifact_type}",
+        )
+
+    # Verify artifact exists and is owned by current user
+    # Convert artifact_id to the appropriate type for this model
+    converted_id = _convert_artifact_id_for_query(permission.artifact_id, model_class)
+    artifact = (
+        db.query(model_class).filter(model_class.id == converted_id).first()
+    )
+
+    if not artifact:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Artifact not found: {permission.artifact_type} with id {permission.artifact_id}",
+        )
+
+    # Check ownership - artifact must be created by current user
+    if (
+        hasattr(artifact, "created_by")
+        and artifact.created_by.lower() != user_email.lower()
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only share artifacts that you own",
+        )
+
+    # Check if permission already exists
+    existing_permission = (
+        db.query(ArtifactPermission)
+        .filter(
+            and_(
+                ArtifactPermission.group_id == group_id,
+                ArtifactPermission.artifact_type == permission.artifact_type,
+                ArtifactPermission.artifact_id == permission.artifact_id,
+            )
+        )
+        .first()
+    )
+
+    if existing_permission:
+        raise HTTPException(
+            status_code=400,
+            detail="This artifact is already shared with this group",
+        )
+
+    # Create the permission
+    new_permission = ArtifactPermission(
+        group_id=group_id,
+        artifact_type=permission.artifact_type,
+        artifact_id=permission.artifact_id,
+        granted_by=user_email,
+    )
+    db.add(new_permission)
+    db.commit()
+    db.refresh(new_permission)
+
+    return new_permission
+
+
+@router.delete("/{group_id}/artifacts/{artifact_type}/{artifact_id}", status_code=204)
+async def revoke_artifact_permission(
+    group_id: UUID,
+    artifact_type: ArtifactType,
+    artifact_id: Union[UUID, str],
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    Revoke a group's access to an artifact. Only owners can revoke access.
+
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    artifact_type : ArtifactType
+        The type of artifact
+    artifact_id : Union[UUID, str]
+        The artifact ID (can be UUID or string)
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    """
+    user_email = auth[0]
+
+    # Verify user is an owner
+    _require_group_owner(group_id, user_email, db)
+
+    # Convert to string for querying ArtifactPermission table (which uses String column)
+    artifact_id_str = str(artifact_id) if isinstance(artifact_id, UUID) else artifact_id
+
+    # Find the permission
+    permission = (
+        db.query(ArtifactPermission)
+        .filter(
+            and_(
+                ArtifactPermission.group_id == group_id,
+                ArtifactPermission.artifact_type == artifact_type,
+                ArtifactPermission.artifact_id == artifact_id_str,
+            )
+        )
+        .first()
+    )
+
+    if not permission:
+        raise HTTPException(
+            status_code=404,
+            detail="Artifact permission not found",
+        )
+
+
+# ***************************************************
+# Artifact Sharing Visibility
+# ***************************************************
+@artifacts_router.get(
+    "/{artifact_type}/{artifact_id}/groups",
+    response_model=List[GroupSharingInfo],
+)
+async def list_artifact_groups(
+    artifact_type: ArtifactType,
+    artifact_id: Union[UUID, str],
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List all groups that an artifact is shared with.
+    
+    Authorization:
+    - Artifact owners can see all groups the artifact is shared with
+    - Non-owners can only see groups they are members of
+    
+    Parameters
+    ----------
+    artifact_type : ArtifactType
+        The type of artifact
+    artifact_id : Union[UUID, str]
+        The artifact ID (can be UUID or string)
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    List[GroupSharingInfo]
+        List of groups the artifact is shared with, including user's role if member
+    """
+    user_email = auth[0]
+    
+    # Get the model class for this artifact type
+    model_class = ARTIFACT_TYPE_TO_MODEL.get(artifact_type)
+    if not model_class:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid artifact type: {artifact_type}",
+        )
+    
+    # Verify artifact exists and check ownership
+    converted_id = _convert_artifact_id_for_query(artifact_id, model_class)
+    artifact = db.query(model_class).filter(model_class.id == converted_id).first()
+    
+    if not artifact:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Artifact not found: {artifact_type} with id {artifact_id}",
+        )
+    
+    # Check if user is the artifact owner
+    is_owner = (
+        hasattr(artifact, "created_by")
+        and artifact.created_by.lower() == user_email.lower()
+    )
+    
+    # Convert artifact_id to string for querying ArtifactPermission table
+    artifact_id_str = str(artifact_id) if isinstance(artifact_id, UUID) else artifact_id
+    
+    # Build query based on ownership
+    if is_owner:
+        # Owner can see all groups the artifact is shared with
+        # Use outer join to include user's role if they're a member
+        query = (
+            db.query(
+                ArtifactPermission,
+                Group.name.label("group_name"),
+                GroupMember.role.label("user_role"),
+            )
+            .join(Group, Group.id == ArtifactPermission.group_id)
+            .outerjoin(
+                GroupMember,
+                and_(
+                    GroupMember.group_id == ArtifactPermission.group_id,
+                    func.lower(GroupMember.user_email) == func.lower(user_email),
+                ),
+            )
+            .filter(
+                ArtifactPermission.artifact_type == artifact_type,
+                ArtifactPermission.artifact_id == artifact_id_str,
+            )
+        )
+    else:
+        # Non-owner can only see groups they're a member of
+        query = (
+            db.query(
+                ArtifactPermission,
+                Group.name.label("group_name"),
+                GroupMember.role.label("user_role"),
+            )
+            .join(Group, Group.id == ArtifactPermission.group_id)
+            .join(
+                GroupMember,
+                and_(
+                    GroupMember.group_id == ArtifactPermission.group_id,
+                    func.lower(GroupMember.user_email) == func.lower(user_email),
+                ),
+            )
+            .filter(
+                ArtifactPermission.artifact_type == artifact_type,
+                ArtifactPermission.artifact_id == artifact_id_str,
+            )
+        )
+    
+    results = query.all()
+    
+    # Format response
+    return [
+        GroupSharingInfo(
+            group_id=perm.group_id,
+            group_name=group_name,
+            granted_by=perm.granted_by,
+            granted_at=perm.granted_at,
+            user_role=user_role,
+        )
+        for perm, group_name, user_role in results
+    ]
+
+
+async def _list_group_artifacts_impl(
+    group_id: UUID,
+    artifact_type: Optional[ArtifactType],
+    limit: int,
+    offset: int,
+    db: Session,
+    auth: tuple,
+):
+    """
+    Internal implementation for listing group artifacts.
+    Handles both filtered (by type) and unfiltered queries.
+    
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    artifact_type : Optional[ArtifactType]
+        Optional artifact type filter
+    limit : int
+        Maximum number of results
+    offset : int
+        Pagination offset
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    ArtifactSharingListResponse
+        Paginated list of artifacts shared with the group
+    """
+    user_email = auth[0]
+    
+    # Verify user is a member of the group
+    _require_group_member(group_id, user_email, db)
+    
+    # Build base query filters
+    base_filters = [ArtifactPermission.group_id == group_id]
+    if artifact_type is not None:
+        base_filters.append(ArtifactPermission.artifact_type == artifact_type)
+    
+    # Get total count
+    total = (
+        db.query(func.count(ArtifactPermission.id))
+        .filter(*base_filters)
+        .scalar()
+    )
+    
+    # Get permissions with basic info (no joins yet)
+    permissions = (
+        db.query(ArtifactPermission)
+        .filter(*base_filters)
+        .order_by(ArtifactPermission.granted_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    
+    # Enrich with artifact details
+    # Group permissions by artifact type for efficient querying
+    artifacts_by_type = {}
+    for perm in permissions:
+        if perm.artifact_type not in artifacts_by_type:
+            artifacts_by_type[perm.artifact_type] = []
+        artifacts_by_type[perm.artifact_type].append(perm)
+    
+    # Fetch artifact details for each type
+    result_artifacts = []
+    for art_type, perms in artifacts_by_type.items():
+        model_class = ARTIFACT_TYPE_TO_MODEL.get(art_type)
+        if not model_class:
+            # Skip unknown artifact types
+            continue
+        
+        # Get artifact IDs for this type
+        artifact_ids = [perm.artifact_id for perm in perms]
+        
+        # Query artifacts of this type
+        artifacts = (
+            db.query(model_class)
+            .filter(cast(model_class.id, String).in_(artifact_ids))
+            .all()
+        )
+        
+        # Create lookup dict
+        artifact_lookup = {str(art.id): art for art in artifacts}
+        
+        # Build response objects
+        for perm in perms:
+            artifact = artifact_lookup.get(perm.artifact_id)
+            result_artifacts.append(
+                ArtifactSharingDetail(
+                    artifact_id=perm.artifact_id,
+                    artifact_type=perm.artifact_type,
+                    artifact_name=getattr(artifact, "name", None) if artifact else None,
+                    granted_by=perm.granted_by,
+                    granted_at=perm.granted_at,
+                    created_by=artifact.created_by if artifact else "unknown",
+                    created_at=artifact.created_at if artifact else perm.granted_at,
+                )
+            )
+    
+    return ArtifactSharingListResponse(
+        total=total,
+        limit=limit,
+        offset=offset,
+        artifacts=result_artifacts,
+    )
+
+
+@router.get("/{group_id}/artifacts", response_model=ArtifactSharingListResponse)
+async def list_group_artifacts_all(
+    group_id: UUID,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List all artifacts (of all types) shared with a group.
+    User must be a member of the group.
+    
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    limit : int
+        Maximum number of results (default: 100, max: 1000)
+    offset : int
+        Pagination offset (default: 0)
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    ArtifactSharingListResponse
+        Paginated list of all artifacts shared with the group
+    """
+    return await _list_group_artifacts_impl(
+        group_id=group_id,
+        artifact_type=None,
+        limit=limit,
+        offset=offset,
+        db=db,
+        auth=auth,
+    )
+
+
+@router.get(
+    "/{group_id}/artifacts/{artifact_type}",
+    response_model=ArtifactSharingListResponse,
+)
+async def list_group_artifacts_by_type(
+    group_id: UUID,
+    artifact_type: ArtifactType,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(utils.get_db),
+    auth=Depends(auth_handler),
+):
+    """
+    List artifacts of a specific type shared with a group.
+    User must be a member of the group.
+    
+    Parameters
+    ----------
+    group_id : UUID
+        The group ID
+    artifact_type : ArtifactType
+        The type of artifacts to list
+    limit : int
+        Maximum number of results (default: 100, max: 1000)
+    offset : int
+        Pagination offset (default: 0)
+    db : Session
+        Database session
+    auth : tuple
+        Authentication tuple (email, token, groups)
+    
+    Returns
+    -------
+    ArtifactSharingListResponse
+        Paginated list of artifacts of the specified type shared with the group
+    """
+    return await _list_group_artifacts_impl(
+        group_id=group_id,
+        artifact_type=artifact_type,
+        limit=limit,
+        offset=offset,
+        db=db,
+        auth=auth,
+    )
+
+    db.delete(permission)
+    db.commit()
+
+
+# Made with Bob

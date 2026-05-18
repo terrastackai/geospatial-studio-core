@@ -219,6 +219,7 @@ def terrakit_data_fetch():
             collection_name = data_connector_config["collection_name"]
             dc = DataConnector(connector_type=model_input_data_spec["connector"])
             logger.info(dc.connector.list_collections())
+            nonAlignedDates = False
 
             if no_of_modalities == 1:
                 data_date = task_dict["date"]
@@ -230,6 +231,8 @@ def terrakit_data_fetch():
             ):
                 data_date = task_dict["date"][i]
                 primary_date = task_dict["date"][0]
+                if primary_date != data_date:
+                    nonAlignedDates = True
 
             notify_gfmaas_ui(
                 event_id=inference_id,
@@ -345,6 +348,12 @@ def terrakit_data_fetch():
                     )
                     original_input_images += [save_filepath]
                     imputed_input_images += [imputed_file_path]
+
+            if (nonAlignedDates):
+                tk_save_filepath = save_filepath.replace(".tif", f"_{data_date}.tif")
+                tk_imputed_filepath = imputed_file_path.replace(".tif", f"_{data_date}.tif")
+                os.rename(tk_save_filepath, save_filepath)
+                os.rename(tk_imputed_filepath, imputed_file_path)
 
         ######################################################################################################
         ###  (optional) if you want to pass on information to later stages of the pipelines,

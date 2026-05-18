@@ -7,7 +7,7 @@ from typing import List, Optional, TypeVar
 
 from fastapi import HTTPException
 from pydantic import BaseModel
-from sqlalchemy import or_, union_all
+from sqlalchemy import func, or_, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -32,17 +32,21 @@ class ItemCrud:
         if user:
             if shared and getattr(self.model, "sharable"):
                 user_filter = or_(
-                    self.model.created_by.in_(
-                        [str(user), settings.DEFAULT_SYSTEM_USER]
-                    ),
+                    func.lower(self.model.created_by) == func.lower(str(user)),
+                    func.lower(self.model.created_by)
+                    == func.lower(settings.DEFAULT_SYSTEM_USER),
                     self.model.sharable.is_(True),
                 )
             else:
-                user_filter = self.model.created_by.in_(
-                    [str(user), settings.DEFAULT_SYSTEM_USER]
+                user_filter = or_(
+                    func.lower(self.model.created_by) == func.lower(str(user)),
+                    func.lower(self.model.created_by)
+                    == func.lower(settings.DEFAULT_SYSTEM_USER),
                 )
         else:
-            user_filter = self.model.created_by.in_([settings.DEFAULT_SYSTEM_USER])
+            user_filter = func.lower(self.model.created_by) == func.lower(
+                settings.DEFAULT_SYSTEM_USER
+            )
 
         return user_filter
 
@@ -287,7 +291,7 @@ class ItemCrud:
                 status_code=404, detail="Item not found or Missing permissions to edit."
             )
 
-        if protected and db_item.created_by != user:
+        if protected and db_item.created_by.lower() != user.lower():
             raise HTTPException(
                 status_code=404, detail="Missing permissions to edit this record."
             )
@@ -346,7 +350,7 @@ class ItemCrud:
                 detail="Item not found or Missing permissions to delete.",
             )
 
-        if protected and db_item.created_by != user:
+        if protected and db_item.created_by.lower() != user.lower():
             raise HTTPException(
                 status_code=404, detail="Missing permissions to delete this record."
             )
@@ -387,7 +391,7 @@ class ItemCrud:
                 detail="Item not found or Missing permissions to delete.",
             )
 
-        if protected and db_item.created_by != user:
+        if protected and db_item.created_by.lower() != user.lower():
             raise HTTPException(
                 status_code=404, detail="Missing permissions to delete this record."
             )

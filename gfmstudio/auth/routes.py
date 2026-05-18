@@ -6,14 +6,15 @@ import uuid
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from requests import Session
+from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from ..common.api import crud
 from ..config import settings
 from ..log import logger
 from . import utils
 from .api_key_utils import generate_apikey
-from .authorizer import auth_handler, exchange_code_for_token, get_api_key
+from .authorizer import auth_handler, exchange_code_for_token, get_api_key, normalize_email
 from .models import APIKey, User
 from .schemas import (
     APIKeyListResponse,
@@ -67,9 +68,20 @@ async def generate_apikey_token(
     auth=Depends(auth_handler),
 ):
     """Generate API key token."""
-    email = auth[0]
-    user = user_crud.get_all(db=db, ignore_user_check=True, filters={"email": email})
-    if user_obj := user[0]:
+    email = normalize_email(auth[0])
+    if not email:
+        raise HTTPException(status_code=401, detail="User email not found")
+
+    user = (
+        db.query(User)
+        .filter(
+            func.lower(User.email) == email,
+            User.deleted.isnot(True),
+        )
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    if user_obj := (user[0] if user else None):
         available_apikeys = [k for k in user_obj.apikeys if k.deleted is False]
         if len(available_apikeys) > 1:
             raise HTTPException(
@@ -86,6 +98,7 @@ async def generate_apikey_token(
         )
         resp = apikey_crud.create(db=db, item=apikey_obj, user=email)
         return resp
+    raise HTTPException(status_code=404, detail="User not found")
 
 
 @router.patch("/auth/api-keys", response_model=APIKeyResponseSchema)
@@ -98,14 +111,14 @@ async def apikey_activation(
 ):
     """Activate and deactivate an API Key."""
     email = auth[0]
-    resp = apikey_crud.get_by_id(db=db, item_id=apikey_id, user=email)
+    resp = apikey_crud.get_by_id(db=db, item_id=str(apikey_id), user=email)
     if not resp:
         raise HTTPException(status_code=404, detail="APIKey not found")
 
     if item.active == resp.active:
         return resp
 
-    updated = apikey_crud.update(db=db, item_id=apikey_id, item=item)
+    updated = apikey_crud.update(db=db, item_id=str(apikey_id), item=item)
     return updated
 
 
@@ -121,9 +134,9 @@ async def delete_apikey(
 ):
     """Delete an API Key."""
     email = auth[0]
-    resp = apikey_crud.get_by_id(db=db, item_id=apikey_id, user=email)
+    resp = apikey_crud.get_by_id(db=db, item_id=str(apikey_id), user=email)
     if not resp:
         raise HTTPException(status_code=404, detail="APIKey not found")
 
-    apikey_crud.soft_delete(db=db, item_id=apikey_id, user=email)
+    apikey_crud.soft_delete(db=db, item_id=str(apikey_id), user=email)
     return {"message": "API-KEY deleted successfully."}
