@@ -28,6 +28,7 @@ terrakit==0.1.3
 tqdm
 wget
 xarray
+mgrs==1.5.4
 
 
 
