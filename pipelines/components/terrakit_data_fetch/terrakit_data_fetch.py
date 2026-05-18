@@ -314,9 +314,7 @@ def terrakit_data_fetch():
                     cache_manager.release_fetch_lock(lock)
             else:
                 logger.info("⏳ Waiting for another process to fetch and cache...")
-                cached_data = cache_manager._wait_for_cache_to_appear(
-                    cache_key, timeout=600
-                )
+                cached_data = cache_manager.wait_for_cache_to_appear(cache_key)
 
                 if cached_data:
                     original_pv_path = cached_data["original_pv_path"]

@@ -10,11 +10,11 @@ import hashlib
 import json
 import os
 import shutil
-import time
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import backoff
 import redis
 import redis_lock
 from gfm_data_processing.common import logger
@@ -334,7 +334,20 @@ class TerrakitPVCacheManager:
             logger.error(f"❌ Failed to cache files: {e}")
             return False
 
-    def _wait_for_cache_to_appear(self, cache_key: str, timeout: int) -> Optional[Dict]:
+    @backoff.on_predicate(
+        wait_gen=backoff.constant,
+        predicate=lambda x: x is None,
+        max_time=600,
+        interval=2,
+        on_backoff=lambda details: logger.debug(
+            f"⏳ Waiting for cache... "
+            f"(attempt {details['tries']}, elapsed {details['elapsed']:.1f}s)"
+        ),
+        on_giveup=lambda details: logger.warning(
+            f"⏰ Timeout waiting for cache after {details['elapsed']:.1f}s"
+        ),
+    )
+    def wait_for_cache_to_appear(self, cache_key: str) -> Optional[Dict]:
         """
         Poll for cache to appear while another process fetches.
 
@@ -345,18 +358,11 @@ class TerrakitPVCacheManager:
         Returns:
             Cached data when available, or None on timeout
         """
-        start_time = time.time()
-        check_interval = 2
+        cached_data = self.get_cached_files(cache_key)
+        if cached_data:
+            logger.info(f"✅ Cache now available: {cache_key[:16]}...")
+            return cached_data
 
-        while time.time() - start_time < timeout:
-            cached_data = self.get_cached_files(cache_key)
-            if cached_data:
-                logger.info(f"✅ Cache now available: {cache_key[:16]}...")
-                return cached_data
-
-            time.sleep(check_interval)
-
-        logger.warning(f"⏰ Timeout waiting for cache: {cache_key[:16]}...")
         return None
 
     def acquire_fetch_lock(self, cache_key: str) -> Optional[object]:
