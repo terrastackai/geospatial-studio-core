@@ -49,6 +49,7 @@ spec:
       initContainers:
         - name: copy-config
           image: busybox
+          imagePullPolicy: IfNotPresent
           command: ['sh', '-c', 'cp /config/config-train.yaml /app/config/']
           volumeMounts:
             - name: config-volume
