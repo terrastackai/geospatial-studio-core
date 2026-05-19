@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import pg8000.native
 
 try:
-    from pipelines.general_libraries.eventing import (
+    from eventing import (
         create_task_ready_event,
         publish_event,
     )
@@ -69,7 +69,7 @@ class DatabaseEventPublisher:
                 password=parsed.password,
                 host=parsed.hostname,
                 port=parsed.port or 5432,
-                database=parsed.path.lstrip('/'),
+                database=parsed.path.lstrip("/"),
             )
 
             logger.info(f"Connected to database, listening on channel: {self.channel}")
@@ -129,7 +129,7 @@ class DatabaseEventPublisher:
 
         if not self.conn:
             raise RuntimeError("Database connection not established")
-            
+
         try:
             self.conn.run(trigger_function)
             self.conn.run(trigger)
@@ -232,6 +232,9 @@ def main():
     if setup_trigger:
         logger.info("Setting up database trigger...")
         publisher.setup_trigger()
+        logger.info("Trigger setup complete. Exiting...")
+        publisher.close()
+        return
 
     logger.info("Starting event publisher...")
     publisher.listen()

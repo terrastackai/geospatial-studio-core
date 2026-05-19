@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, text
 
 # Import event publishing
 try:
-    from pipelines.general_libraries.eventing import (
+    from eventing import (
         create_task_ready_event,
         publish_event,
     )

@@ -25,7 +25,7 @@ try:
 except ImportError:
     logger = logging.getLogger(__name__)
 
-from pipelines.general_libraries.eventing.cloudevents_schema import CloudEvent
+from eventing.cloudevents_schema import CloudEvent
 
 
 class EventPublisher:
