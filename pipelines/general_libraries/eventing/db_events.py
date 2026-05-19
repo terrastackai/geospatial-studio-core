@@ -5,11 +5,11 @@ import json
 import logging
 import os
 import signal
+import time
 from typing import Optional
+from urllib.parse import urlparse
 
-import psycopg2
-import psycopg2.extensions
-from psycopg2.extras import RealDictCursor
+import pg8000.native
 
 try:
     from pipelines.general_libraries.eventing import (
@@ -45,7 +45,7 @@ class DatabaseEventPublisher:
         self.db_uri = db_uri
         self.channel = channel
         self.table_name = table_name
-        self.conn: Optional[psycopg2.extensions.connection] = None
+        self.conn: Optional[pg8000.native.Connection] = None
         self.running = False
 
         # Setup signal handlers for graceful shutdown
@@ -60,10 +60,18 @@ class DatabaseEventPublisher:
     def connect(self):
         """Establish database connection."""
         try:
-            self.conn = psycopg2.connect(self.db_uri, cursor_factory=RealDictCursor)
-            self.conn.set_isolation_level(
-                psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
+            # Parse the database URI
+            parsed = urlparse(self.db_uri)
+
+            # Extract connection parameters
+            self.conn = pg8000.native.Connection(
+                user=parsed.username,
+                password=parsed.password,
+                host=parsed.hostname,
+                port=parsed.port or 5432,
+                database=parsed.path.lstrip('/'),
             )
+
             logger.info(f"Connected to database, listening on channel: {self.channel}")
         except Exception as ex:
             logger.error(f"Failed to connect to database: {ex}")
@@ -88,7 +96,7 @@ class DatabaseEventPublisher:
                 INTO step_data
                 WHERE (json_array_elements(NEW.pipeline_steps::json)->>'status') = 'READY'
                 LIMIT 1;
-                
+
                 IF step_data IS NOT NULL THEN
                     payload = json_build_object(
                         'operation', TG_OP,
@@ -119,10 +127,12 @@ class DatabaseEventPublisher:
         EXECUTE FUNCTION notify_task_event();
         """
 
+        if not self.conn:
+            raise RuntimeError("Database connection not established")
+            
         try:
-            with self.conn.cursor() as cur:
-                cur.execute(trigger_function)
-                cur.execute(trigger)
+            self.conn.run(trigger_function)
+            self.conn.run(trigger)
             logger.info(f"Successfully created trigger on {self.table_name}")
         except Exception as ex:
             logger.error(f"Failed to create trigger: {ex}")
@@ -137,18 +147,20 @@ class DatabaseEventPublisher:
             raise RuntimeError("Failed to establish database connection")
 
         try:
-            with self.conn.cursor() as cur:
-                cur.execute(f"LISTEN {self.channel};")
+            self.conn.run(f"LISTEN {self.channel};")
 
             logger.info(f"Listening for notifications on channel: {self.channel}")
             self.running = True
 
             while self.running:
-                # Wait for notifications with timeout
-                if self.conn.poll() == psycopg2.extensions.POLL_OK:
-                    while self.conn.notifies:
-                        notify = self.conn.notifies.pop(0)
+                # Check for notifications (notifications is a deque attribute in pg8000)
+                if self.conn.notifications:
+                    while self.conn.notifications:
+                        notify = self.conn.notifications.popleft()
                         self._handle_notification(notify)
+                else:
+                    # Sleep briefly to avoid busy waiting
+                    time.sleep(0.1)
 
         except Exception as ex:
             logger.error(f"Error in listen loop: {ex}")
@@ -161,10 +173,12 @@ class DatabaseEventPublisher:
         Handle a database notification by publishing a CloudEvent.
 
         Args:
-            notify: psycopg2 notification object
+            notify: pg8000 notification tuple (channel, payload, pid)
         """
         try:
-            payload = json.loads(notify.payload)
+            # pg8000 returns notifications as tuples: (channel, payload, pid)
+            channel, payload_str, pid = notify
+            payload = json.loads(payload_str)
             logger.info(f"Received notification: {payload.get('task_id')}")
 
             # Create CloudEvent
@@ -204,9 +218,7 @@ class DatabaseEventPublisher:
 
 def main():
     """Main entry point for the database event publisher."""
-    db_uri = os.getenv(
-        "orchestrate_db_uri", "postgresql://user:password@localhost:5432/geospatial"
-    )
+    db_uri = os.getenv("orchestrate_db_uri", "")
     channel = os.getenv("DB_NOTIFY_CHANNEL", "task_events")
     table_name = os.getenv("inference_task_table", "inf_task")
     setup_trigger = os.getenv("SETUP_TRIGGER", "false").lower() == "true"
