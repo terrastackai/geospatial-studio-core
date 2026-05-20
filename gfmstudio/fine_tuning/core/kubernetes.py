@@ -18,7 +18,6 @@ from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from typing_extensions import Awaitable
 
-from gfmstudio.celery_worker import celery_app
 from gfmstudio.common.api import crud, utils
 from gfmstudio.config import BASE_DIR, settings
 from gfmstudio.fine_tuning import schemas
@@ -26,6 +25,7 @@ from gfmstudio.fine_tuning.core.procs import ProcessError, check_output
 from gfmstudio.fine_tuning.core.schema import JobState
 from gfmstudio.fine_tuning.models import Tunes
 from gfmstudio.log import logger
+from gfmstudio.redis_client import get_async_redis_client
 
 # This lock prevents two coros trying to run kubectl login at the same time
 COMMAND = f"kubectl get job --namespace={settings.NAMESPACE}"
@@ -944,12 +944,14 @@ async def evict_and_revoke_celery_task(tune_id: str, queue_name: str = "geoft"):
     """
     Cancels and revokes a Celery task given its ID and queue name.
     """
+    # Lazy import to avoid circular dependency
+    from gfmstudio.celery_worker import celery_app
+
     try:
         celery_app.control.revoke(
             task_id=tune_id, terminate=True, queue=queue_name, signal="SIGKILL"
         )
         logger.info(f"Revoked Celery task {tune_id} from queue {queue_name}")
-        from gfmstudio.redis_client import get_async_redis_client
 
         redis_client = await get_async_redis_client()
 
