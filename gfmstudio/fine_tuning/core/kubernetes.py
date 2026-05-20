@@ -916,10 +916,14 @@ async def cleanup_stale_pending_jobs():
             ignore_user_check=True,
         )
 
+        logger.info(
+            f"Found {len(pending_tunes)} stale pending jobs to clean up (threshold: {threshold})"
+        )
+
         for tune in pending_tunes:
 
             hours_pending = (datetime.utcnow() - tune.created_at).total_seconds() / 3600
-            logger.info(f"Cleaning up {tune.id} which is {hours_pending} hours old")
+            logger.info(f"Cleaning up {tune.id} which is {hours_pending:.1f} hours old")
             try:
                 await evict_and_revoke_celery_task(tune.id)
                 kjob_id = f"kjob-{tune.id}".lower()
@@ -930,13 +934,15 @@ async def cleanup_stale_pending_jobs():
                     tune,
                     item={
                         "status": JobState.FAILED,
-                        "logs": f"Job stuck in pending for{hours_pending:.1f} Auto cleaned",
+                        "logs": f"Job stuck in pending for {hours_pending:.1f}h."
+                        f"Auto-cleaned at {datetime.utcnow().isoformat()}",
                     },
                     protected=False,
                 )
                 session.commit()
+                logger.info(f"✅ Successfully cleaned up {tune.id}")
             except Exception:
-                logger.exception(f"Error occurred while cleaning up {tune.id}")
+                logger.exception(f"❌ Error occurred while cleaning up {tune.id}")
                 session.rollback()
                 continue
 
