@@ -6,12 +6,14 @@ import asyncio
 
 import requests
 from celery import Celery
+from celery.schedules import crontab
 
 from gfmstudio.amo.services import invoke_deploy_models_with_caikit
 from gfmstudio.amo.utils import invoke_model_offboarding_handler
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning.core.kubernetes import (
     check_tuning_task_status,
+    cleanup_stale_pending_jobs,
     deploy_hpo_tuning_job,
     deploy_tuning_job,
 )
@@ -49,6 +51,16 @@ celery_app.conf.task_queues = {
 }
 celery_app.conf.task_default_queue = INF_SERVICE_NAME
 celery_app.conf.task_default_routing_key = INF_SERVICE_NAME
+
+celery_app.conf.beat_schedule = {
+    "cleanup-stale-pending-jobs": {
+        "task": "cleanup-stale-pending-jobs",
+        "schedule": crontab(
+            minute=f"*/{settings.PENDING_JOB_CLEANUP_SCHEDULE_MINUTES}"
+        ),
+        "options": {"queue": FT_SERVICE_NAME},
+    }
+}
 
 
 @celery_app.task(
@@ -172,3 +184,23 @@ def invoke_model_onboarding(**kwargs):
 @celery_app.task(name="invoke_model_offboarding", queue=INF_SERVICE_NAME)
 def invoke_model_offboarding(**kwargs):
     return asyncio.run(invoke_model_offboarding_handler(**kwargs))
+
+
+@celery_app.task(
+    name="cleanup_stale_pending_jobs",
+    queue=FT_SERVICE_NAME,
+)
+def cleanup_stale_pending_job():
+    """
+    Periodic task to clean up jobs stuck in Pending status maybe due to lack of resources
+
+    For each pedning job older than CLEANUP_STALE_JOB_HOURS:
+    1. Update database status to "FAILED"
+    2. Delete kubernetes job resources
+    """
+
+    if not settings.PENDING_JOB_CLEANUP_ENABLED:
+        logger.debug("Pending job clean up is disabled")
+        return {"status": "disabled"}
+    logger.debug("Starting stale pending job cleanup.")
+    return asyncio.run(cleanup_stale_pending_jobs())
