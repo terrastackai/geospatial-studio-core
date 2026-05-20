@@ -14,7 +14,9 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import backoff
 import redis
+import redis_lock
 from gfm_data_processing.common import logger
 
 REDIS_URL = os.getenv("REDIS_URL", "")
@@ -95,6 +97,8 @@ class TerrakitPVCacheManager:
         except Exception as e:
             logger.error(f"❌ Cache directory not writable: {e} - cache disabled")
             self.enabled = False
+
+        self.fetch_lock_ttl = 300000
 
     def get_cache_key(
         self,
@@ -328,6 +332,98 @@ class TerrakitPVCacheManager:
 
         except Exception as e:
             logger.error(f"❌ Failed to cache files: {e}")
+            return False
+
+    @backoff.on_predicate(
+        wait_gen=backoff.constant,
+        predicate=lambda x: x is None,
+        max_time=600,
+        interval=2,
+        on_backoff=lambda details: logger.debug(
+            f"⏳ Waiting for cache... "
+            f"(attempt {details['tries']}, elapsed {details['elapsed']:.1f}s)"
+        ),
+        on_giveup=lambda details: logger.warning(
+            f"⏰ Timeout waiting for cache after {details['elapsed']:.1f}s"
+        ),
+    )
+    def wait_for_cache_to_appear(self, cache_key: str) -> Optional[Dict]:
+        """
+        Poll for cache to appear while another process fetches.
+
+        Args:
+            cache_key: Cache key to wait for
+            timeout: Maximum wait time (seconds)
+
+        Returns:
+            Cached data when available, or None on timeout
+        """
+        cached_data = self.get_cached_files(cache_key)
+        if cached_data:
+            logger.info(f"✅ Cache now available: {cache_key[:16]}...")
+            return cached_data
+
+        return None
+
+    def acquire_fetch_lock(self, cache_key: str) -> Optional[object]:
+        """
+        Acquire distributed lock for fetching data.
+
+        Args:
+            cache_key: Cache key to lock
+
+        Returns:
+            Lock object if acquired, None otherwise
+        """
+        if not self.enabled:
+            return None
+
+        lock_key = f"{cache_key}:fetch_lock"
+
+        try:
+            lock = redis_lock.Lock(
+                self.redis_client,
+                lock_key,
+                expire=self.fetch_lock_ttl,
+                auto_renewal=True,
+                strict=True,
+            )
+            acquired = lock.acquire(blocking=False)
+            if acquired:
+                logger.info(f"🔒 Acquired fetch lock: {cache_key[:16]}...")
+                return lock
+            else:
+                logger.info(f"❌ Failed to acquire lock: {cache_key[:16]}...")
+                return None
+        except redis_lock.AlreadyAcquired:
+            logger.info(f"❌ Lock already held by another process: {cache_key[:16]}...")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error acquiring lock: {e}")
+            return None
+
+    def release_fetch_lock(self, lock: object) -> bool:
+        """
+        Release distributed lock.
+
+        Args:
+            lock: Lock object from acquire_fetch_lock
+
+        Returns:
+            True if released successfully
+        """
+        if not self.enabled or not lock:
+            return False
+
+        try:
+            lock.release()
+            logger.info("🔓 Released fetch lock")
+            return True
+        except redis_lock.NotAcquired:
+            logger.warning("⚠️ Lock was not acquired or already released")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error releasing lock: {e}")
             return False
 
     def _get_cache_size(self) -> int:
