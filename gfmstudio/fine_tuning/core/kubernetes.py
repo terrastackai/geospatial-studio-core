@@ -931,7 +931,7 @@ async def cleanup_stale_pending_jobs():
                 kjob_id = f"kjob-{tune.id}".lower()
                 await delete_k8s_job_resources(kjob_id)
 
-                await tune_crud.update(
+                tune_crud.update(
                     session,
                     tune.id,
                     item={  # type: ignore[arg-type]
