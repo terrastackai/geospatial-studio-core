@@ -10,12 +10,15 @@ import subprocess
 import uuid
 from datetime import datetime, timedelta
 from subprocess import PIPE, Popen
+from typing import cast
 
 import yaml
 from jinja2 import Template
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from typing_extensions import Awaitable
 
+from gfmstudio.celery_worker import celery_app
 from gfmstudio.common.api import crud, utils
 from gfmstudio.config import BASE_DIR, settings
 from gfmstudio.fine_tuning import schemas
@@ -917,6 +920,7 @@ async def cleanup_stale_pending_jobs():
             hours_pending = (datetime.utcnow() - tune.created_at).total_seconds() / 3600
             logger.info(f"Cleaning up {tune.id} which is {hours_pending} hours old")
             try:
+                await evict_and_revoke_celery_task(tune.id)
                 kjob_id = f"kjob-{tune.id}".lower()
                 await delete_k8s_job_resources(kjob_id)
 
@@ -925,7 +929,7 @@ async def cleanup_stale_pending_jobs():
                     tune,
                     item={
                         "status": JobState.FAILED,
-                        "error": f"Job stuck in pending for{hours_pending}:.1f Auto cleaned",
+                        "error": f"Job stuck in pending for{hours_pending:.1f} Auto cleaned",
                     },
                     protected=False,
                 )
@@ -934,3 +938,37 @@ async def cleanup_stale_pending_jobs():
                 logger.exception(f"Error occurred while cleaning up {tune.id}")
                 session.rollback()
                 continue
+
+
+async def evict_and_revoke_celery_task(tune_id: str, queue_name: str = "geoft"):
+    """
+    Cancels and revokes a Celery task given its ID and queue name.
+    """
+    try:
+        celery_app.control.revoke(
+            task_id=tune_id, terminate=True, queue=queue_name, signal="SIGKILL"
+        )
+        logger.info(f"Revoked Celery task {tune_id} from queue {queue_name}")
+        from gfmstudio.redis_client import get_async_redis_client
+
+        redis_client = await get_async_redis_client()
+
+        if redis_client:
+            queue_length = await cast(Awaitable[int], redis_client.llen(queue_name))
+            if queue_length > 0:
+                queue_items = await cast(
+                    Awaitable[list[str]], redis_client.lrange(queue_name, 0, -1)
+                )
+                for item in queue_items:
+                    if item and tune_id in str(item):
+                        redis_client.lrem(queue_name, 0, item)
+                        logger.info(
+                            f"Removed Celery task {tune_id} from queue {queue_name}"
+                        )
+                        break
+            await redis_client.close()
+
+    except Exception as e:
+        logger.error(
+            f"Error revoking Celery task {tune_id} from queue {queue_name}: {e}"
+        )
