@@ -9,21 +9,19 @@ This starter component script
 # Dependencies
 # pip install ibm-cos-sdk requests tenacity pyyaml opentelemetry-distro opentelemetry-exporter-otlp
 
+import glob
+import json
 import os
 import shutil
-import json
-import glob
-import yaml
-import time
 import subprocess
 
-
+import yaml
 from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
 from gfm_data_processing.metrics import MetricManager
 from terratorch_inference_utils import (
-    read_json_with_retries,
     copy_tiffs,
     delete_tmp_dir,
+    read_json_with_retries,
 )
 
 # Uncomment next 2 lines for local testing
@@ -45,8 +43,9 @@ process_id = os.getenv("process_id", "terratorch-inference")
 
 metric_manager = MetricManager(component_name=process_id)
 
-stdout_log = os.environ.get('GFM_STDOUT_LOG')
-stderr_log = os.environ.get('GFM_STDERR_LOG')
+stdout_log = os.environ.get("GFM_STDOUT_LOG")
+stderr_log = os.environ.get("GFM_STDERR_LOG")
+
 
 @metric_manager.count_failures(inference_id=inference_id, task_id=task_id)
 @metric_manager.record_duration(inference_id=inference_id, task_id=task_id)
@@ -120,40 +119,28 @@ def run_terratorch_inference():
         # input data spec will be the task folder for uni-modal, and a dict if multi-modal (need check)
         if "modalities" in config["data"]["init_args"]:
             modality_tags = config["data"]["init_args"]["modalities"]
-            
-            # Extract modality specs from inference_dict for suffix validation
-            model_input_data_spec = inference_dict.get("model_input_data_spec", [])
-            modality_spec_map = {
-                spec.get("modality_tag"): spec.get("file_suffix")
-                for spec in model_input_data_spec
-                if spec.get("modality_tag") and spec.get("file_suffix")
-            }
-            
             ## Create a tmp folder, rename the tiffs to remove modality tag
             os.makedirs(tmp_folder, exist_ok=True)  # safer and won't error if exists
             for filename in os.listdir(task_folder):
                 for modality_tag in modality_tags:
-                    expected_suffix = modality_spec_map.get(modality_tag)
-                    
                     if (
                         "imputed" in filename.lower()
                         and filename.lower().endswith((".tif", ".tiff"))
                         and modality_tag in filename
                     ):
                         # Split filename by "_" and remove modality_tag
-                        parts = filename.split("_")
-                        new_parts = [part for part in parts if part != modality_tag]
-                        new_filename = "_".join(new_parts)
-                        
-                        # Verify and append the correct file_suffix if missing
-                        if expected_suffix and not new_filename.endswith(f"_{expected_suffix}.tif"):
-                            # Remove .tif extension, append suffix, add .tif back
-                            base_name = new_filename.rsplit(".tif", 1)[0]
-                            new_filename = f"{base_name}_{expected_suffix}.tif"
-                            logger.info(
-                                f"Appended missing suffix to filename: {new_filename}"
-                            )
+                        # If imputed at the end, move it one level up
+                        b, extension = filename.rsplit(".", 1)
+                        parts = b.split("_")
 
+                        if "imputed" == parts[-1]:
+                            parts.insert(-1, parts.pop(parts.index("imputed")))
+                        # ToDo: Add a better logic when imputed is not at the end.
+                        # For now, according to url_connect, it will always be at the end.
+
+                        new_parts = [part for part in parts if part != modality_tag]
+                        # Make sure that file_suffiix is the last item before the .tif/.tiff
+                        new_filename = "_".join(new_parts)
                         # Build full paths
                         old_path = os.path.join(task_folder, filename)
                         new_path = os.path.join(tmp_folder, new_filename)
@@ -197,9 +184,7 @@ def run_terratorch_inference():
                 old_path=task_folder,
                 new_path=tmp_regression_images_dir,
             )
-            model_config_path_not_tiled = (
-                f"{tune_path}/config_deploy_not_tiled.yaml"
-            )
+            model_config_path_not_tiled = f"{tune_path}/config_deploy_not_tiled.yaml"
             input_data_spec = tmp_regression_images_dir
             terratorch_cli_command = f'terratorch predict -c "{model_config_path_not_tiled}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec}'
 
@@ -213,11 +198,11 @@ def run_terratorch_inference():
 
         ## Now run the command and get a list of the inference output tifs
 
-        terratorch_cli_command = f'python -u -m {terratorch_cli_command}'
+        terratorch_cli_command = f"python -u -m {terratorch_cli_command}"
         print(terratorch_cli_command)
 
         env = os.environ.copy()
-        env['PYTHONUNBUFFERED'] = '1'
+        env["PYTHONUNBUFFERED"] = "1"
         with open(stdout_log, "a") as log_file:
             process = subprocess.Popen(
                 terratorch_cli_command,
@@ -226,17 +211,19 @@ def run_terratorch_inference():
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                env=env
+                env=env,
             )
-            for line in iter(process.stdout.readline, ''):
+            for line in iter(process.stdout.readline, ""):
                 log_file.write(line)
                 log_file.flush()
                 os.fsync(log_file.fileno())
 
             return_code = process.wait()
-            
+
             if return_code != 0:
-                raise RuntimeError(f"TerraTorch inference failed with exit code {return_code}")
+                raise RuntimeError(
+                    f"TerraTorch inference failed with exit code {return_code}"
+                )
 
         os.system("sync")
 
@@ -247,8 +234,8 @@ def run_terratorch_inference():
         pred_files = glob.glob(f"{output_folder}/*_pred.tif")
         if not pred_files:
             raise FileNotFoundError(
-            f"{pred_files} : No prediction file(s) found. Inference failed."
-        )
+                f"{pred_files} : No prediction file(s) found. Inference failed."
+            )
 
         print(f"Prediction Files: {pred_files}")
         model_output_image = glob.glob(f"{output_folder}/*_pred.tif")[0]
