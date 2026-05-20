@@ -911,7 +911,7 @@ async def cleanup_stale_pending_jobs():
         tune_crud = crud.ItemCrud(Tunes)
         pending_tunes = tune_crud.get_all(
             session,
-            filters={"status": JobState.PENDING},
+            filters={"status": "Pending"},
             filter_expr=Tunes.created_at < threshold,
             ignore_user_check=True,
         )
@@ -931,11 +931,11 @@ async def cleanup_stale_pending_jobs():
                 kjob_id = f"kjob-{tune.id}".lower()
                 await delete_k8s_job_resources(kjob_id)
 
-                await tune.update_db(
+                await tune_crud.update(
                     session,
-                    tune,
-                    item={
-                        "status": JobState.FAILED,
+                    tune.id,
+                    item={  # type: ignore[arg-type]
+                        "status": "Failed",
                         "logs": f"Job stuck in pending for {hours_pending:.1f}h. "
                         f"Auto-cleaned at {datetime.now(timezone.utc).isoformat()}",
                     },
