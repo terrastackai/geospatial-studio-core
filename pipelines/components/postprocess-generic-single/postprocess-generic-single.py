@@ -7,24 +7,26 @@ This component reads the output from preprocessing and puts together a request t
 """
 
 # Dependencies
-# pip install rioxarray shapely geopandas numpy==2.3.2 xarray opentelemetry-distro opentelemetry-exporter-otlp buildingregulariser matplotlib
+# pip install rioxarray shapely geopandas numpy==2.3.2 xarray opentelemetry-distro
+# opentelemetry-exporter-otlp buildingregulariser matplotlib
 
-import os
 import json
+import os
+
 import rioxarray
 from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
 from gfm_data_processing.metrics import MetricManager
 from postprocess_generic_helper_functions import (
-    make_rgb,
-    mask_ocean,
-    resize_image,
-    mask_from_url,
     geojson_to_tiff,
-    mask_and_set_to,
-    zip_inference_data,
-    read_json_with_retries,
     get_lulc_tile_for_input,
+    make_rgb,
+    mask_and_set_to,
+    mask_from_url,
+    mask_ocean,
+    read_json_with_retries,
     regularize_by_technique,
+    resize_image,
+    zip_inference_data,
 )
 
 # Uncomment next 2 lines for local testing
@@ -87,23 +89,32 @@ def post_process(inference_dict, imputed_input_image, raw_input_image, xds, i=0)
 
             masking_type = "permanent_water_masking"
             if "permanent_water_masking" in inference_dict["data_connector_config"][i]:
-                encoding_type = inference_dict["data_connector_config"][i][masking_type]["encoding"]
+                encoding_type = inference_dict["data_connector_config"][i][
+                    masking_type
+                ]["encoding"]
                 if encoding_type == "sentinel2_lulc":
                     try:
                         lulc_file_path = get_lulc_tile_for_input(raw_input_image)
                         ids = rioxarray.open_rasterio(lulc_file_path)
                     except Exception as e:
                         logger.exception(e)
-                        logger.error("Issue accessing LULC tiles. Fall back to using scene classification layer.")
+                        logger.error(
+                            "Issue accessing LULC tiles. Fall back to using scene classification layer."
+                        )
                 else:
-                    inference_dict["data_connector_config"][i][masking_type]["encoding"] = "sentinel2_scl"
-                    inference_dict["data_connector_config"][i][masking_type]["band"] = "SCL"
+                    inference_dict["data_connector_config"][i][masking_type][
+                        "encoding"
+                    ] = "sentinel2_scl"
+                    inference_dict["data_connector_config"][i][masking_type][
+                        "band"
+                    ] = "SCL"
                 # Create mask for permanent water
                 xds = mask_and_set_to(xds, ids, masking_type, inference_dict, i)
                 masked = True
             else:
                 logger.error(
-                    "*********** Error running post processing: permanent_water_masking post_processing key missing from inference dictionary ***********"
+                    "*********** Error running post processing: permanent_water_masking post_processing \
+                    key missing from inference dictionary ***********"
                 )
 
     if "ocean_masking" in inference_dict["post_processing"]:
@@ -113,13 +124,29 @@ def post_process(inference_dict, imputed_input_image, raw_input_image, xds, i=0)
             masked = True
 
     if "mask_from_url" in inference_dict["post_processing"]:
-        if inference_dict["post_processing"].get("mask_from_url") not in ["", "None", "False", None, {}]:
+        if inference_dict["post_processing"].get("mask_from_url") not in [
+            "",
+            "None",
+            "False",
+            None,
+            {},
+        ]:
             # Use the location for the mask geojson to task
             logger.info("*********** Custom user-defined masking ***********")
-            custom_mask_location = inference_dict["post_processing"]["mask_from_url"].get(
-                "inference_folder_mask_location"
-            ) or inference_dict["post_processing"]["mask_from_url"].get("url")
-            buffer_size = float(inference_dict["post_processing"]["mask_from_url"].get("buffer_size_m", 100.0))
+            custom_mask_location = inference_dict["post_processing"][
+                "mask_from_url"
+            ].get("inference_folder_mask_location") or inference_dict[
+                "post_processing"
+            ][
+                "mask_from_url"
+            ].get(
+                "url"
+            )
+            buffer_size = float(
+                inference_dict["post_processing"]["mask_from_url"].get(
+                    "buffer_size_m", 100.0
+                )
+            )
             xds = mask_from_url(custom_mask_location, xds, buffer_size)
             masked = True
 
@@ -146,7 +173,8 @@ def regularize_prediction(inference_dict, raster_to_regularize):
 
     if "regularization" in inference_dict["post_processing"] and raster_to_regularize:
         if inference_dict["post_processing"].get("regularization") == "True":
-            # TODO Allow user to select which function to use. and which args to pass. For now use the adaptive regularization technique
+            # TODO Allow user to select which function to use. and which args to pass.
+            # For now use the adaptive regularization technique
             regularized_vector = regularize_by_technique(
                 raster_to_regularize=raster_to_regularize,
                 technique="adaptive_regularization",
@@ -183,8 +211,13 @@ def postprocess_generic_single():
         task_config_path = f"{task_folder}/{task_id}_config.json"
         task_dict = read_json_with_retries(filepath=task_config_path, max_retries=5)
 
-        model_input_original_image = task_dict["original_input_image"]
-        model_input_imputed_image = task_dict["imputed_input_image"]
+        # Handle both singular and plural keys, and normalize to handle single items or lists
+        model_input_original_image = task_dict.get(
+            "original_input_image"
+        ) or task_dict.get("original_input_images")
+        model_input_imputed_image = task_dict.get(
+            "imputed_input_image"
+        ) or task_dict.get("imputed_input_images")
         model_output_image = task_dict["model_output_image"]
 
         ######################################################################################################
@@ -231,7 +264,8 @@ def postprocess_generic_single():
                 )
         else:
             logger.error(
-                "*********** Error running post processing: post_processing key missing from inference dictionary ***********"
+                "*********** Error running post processing: post_processing key missing \
+                    from inference dictionary ***********"
             )
 
         if masked:
@@ -240,13 +274,17 @@ def postprocess_generic_single():
             xds.rio.to_raster(masked_output_path)
             task_dict["model_output_image_masked"] = masked_output_path
 
-        raster_to_regularize = masked_output_path if masked_output_path else model_output_image
+        raster_to_regularize = (
+            masked_output_path if masked_output_path else model_output_image
+        )
         regularized, regularized_vector = regularize_prediction(
             inference_dict=inference_dict, raster_to_regularize=raster_to_regularize
         )
 
         if regularized:
-            model_output_regularized_image = model_output_image.replace(".tif", "_adaptive_regularized.tif")
+            model_output_regularized_image = model_output_image.replace(
+                ".tif", "_adaptive_regularized.tif"
+            )
             # Convert the geojson to a tif file
             geojson_to_tiff(
                 prediction_tif_file_path=model_output_image,
