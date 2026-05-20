@@ -141,6 +141,7 @@ def run_terratorch_inference():
                         new_parts = [part for part in parts if part != modality_tag]
                         # Make sure that file_suffiix is the last item before the .tif/.tiff
                         new_filename = "_".join(new_parts)
+                        new_filename = new_filename + "." + extension
                         # Build full paths
                         old_path = os.path.join(task_folder, filename)
                         new_path = os.path.join(tmp_folder, new_filename)
