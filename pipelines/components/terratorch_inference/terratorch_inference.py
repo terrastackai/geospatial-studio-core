@@ -156,7 +156,7 @@ def run_terratorch_inference():
 
             input_data_spec = json.dumps(temp_spec)
 
-            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root "{input_data_spec}"'
+            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root "{input_data_spec}"'  # noqa: E501
 
             ## TODO: Terramind not happy with image_grep command, remove it for now. (Fix later)
             # for i in config["data"]["init_args"]["modalities"]:
@@ -186,7 +186,7 @@ def run_terratorch_inference():
             )
             model_config_path_not_tiled = f"{tune_path}/config_deploy_not_tiled.yaml"
             input_data_spec = tmp_regression_images_dir
-            terratorch_cli_command = f'terratorch predict -c "{model_config_path_not_tiled}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec}'
+            terratorch_cli_command = f'terratorch predict -c "{model_config_path_not_tiled}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec}'  # noqa: E501
 
         else:
             input_data_spec = output_folder
@@ -194,7 +194,7 @@ def run_terratorch_inference():
                 img_grep = task_dict["imputed_input_image"][0]
             elif isinstance(task_dict["imputed_input_image"], str):
                 img_grep = task_dict["imputed_input_image"]
-            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec} --data.init_args.img_grep {img_grep}'
+            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec} --data.init_args.img_grep {img_grep}'  # noqa: E501
 
         ## Now run the command and get a list of the inference output tifs
 
