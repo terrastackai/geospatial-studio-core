@@ -913,6 +913,7 @@ async def cleanup_stale_pending_jobs():
             session,
             filters={"status": JobState.PENDING},
             filter_expr=Tunes.created_at < threshold,
+            ignore_user_check=True,
         )
 
         for tune in pending_tunes:
@@ -929,7 +930,7 @@ async def cleanup_stale_pending_jobs():
                     tune,
                     item={
                         "status": JobState.FAILED,
-                        "error": f"Job stuck in pending for{hours_pending:.1f} Auto cleaned",
+                        "logs": f"Job stuck in pending for{hours_pending:.1f} Auto cleaned",
                     },
                     protected=False,
                 )
