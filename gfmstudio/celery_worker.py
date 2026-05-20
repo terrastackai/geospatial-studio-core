@@ -54,7 +54,7 @@ celery_app.conf.task_default_routing_key = INF_SERVICE_NAME
 
 celery_app.conf.beat_schedule = {
     "cleanup-stale-pending-jobs": {
-        "task": "cleanup-stale-pending-jobs",
+        "task": "cleanup_stale_pending_jobs",
         "schedule": crontab(
             minute=f"*/{settings.PENDING_JOB_CLEANUP_SCHEDULE_MINUTES}"
         ),
