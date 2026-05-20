@@ -8,7 +8,7 @@ import re
 import shlex
 import subprocess
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from subprocess import PIPE, Popen
 from typing import cast
 
@@ -905,7 +905,7 @@ async def cleanup_stale_pending_jobs():
 
     async with utils.get_db_ctx() as session:
 
-        threshold = datetime.utcnow() - timedelta(
+        threshold = datetime.now(timezone.utc) - timedelta(
             hours=settings.CLEANUP_STALE_JOB_HOURS
         )
         tune_crud = crud.ItemCrud(Tunes)
@@ -922,7 +922,9 @@ async def cleanup_stale_pending_jobs():
 
         for tune in pending_tunes:
 
-            hours_pending = (datetime.utcnow() - tune.created_at).total_seconds() / 3600
+            hours_pending = (
+                datetime.now(timezone.utc) - tune.created_at
+            ).total_seconds() / 3600
             logger.info(f"Cleaning up {tune.id} which is {hours_pending:.1f} hours old")
             try:
                 await evict_and_revoke_celery_task(tune.id)
@@ -934,8 +936,8 @@ async def cleanup_stale_pending_jobs():
                     tune,
                     item={
                         "status": JobState.FAILED,
-                        "logs": f"Job stuck in pending for {hours_pending:.1f}h."
-                        f"Auto-cleaned at {datetime.utcnow().isoformat()}",
+                        "logs": f"Job stuck in pending for {hours_pending:.1f}h. "
+                        f"Auto-cleaned at {datetime.now(timezone.utc).isoformat()}",
                     },
                     protected=False,
                 )
