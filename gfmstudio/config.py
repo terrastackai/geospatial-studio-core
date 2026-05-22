@@ -282,6 +282,16 @@ class Settings(BaseSettings):
     def job_failure_list(self):
         return [s.strip().lower() for s in self.K8S_JOB_FAILURE_STATUSES.split(",")]
 
+    CLEANUP_STALE_JOB_HOURS: int = Field(
+        default=1,
+        description="Hours after which a PENDING job is marked as failed and cleaned up",
+    )
+    PENDING_JOB_CLEANUP_ENABLED: Optional[bool] = Field(
+        default=True, description="Enable automatic cleanup of stuck pending jobs"
+    )
+    PENDING_JOB_CLEANUP_SCHEDULE_MINUTES: int = Field(
+        default=2, description="Minutes at which to run the pending job cleanup task"
+    )
     ####################
     # DATASET FACTORY
     ####################

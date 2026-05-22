@@ -8,18 +8,24 @@ import re
 import shlex
 import subprocess
 import uuid
+from datetime import datetime, timedelta, timezone
 from subprocess import PIPE, Popen
+from typing import cast
 
 import yaml
 from jinja2 import Template
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from typing_extensions import Awaitable
 
+from gfmstudio.common.api import crud, utils
 from gfmstudio.config import BASE_DIR, settings
 from gfmstudio.fine_tuning import schemas
 from gfmstudio.fine_tuning.core.procs import ProcessError, check_output
 from gfmstudio.fine_tuning.core.schema import JobState
+from gfmstudio.fine_tuning.models import Tunes
 from gfmstudio.log import logger
+from gfmstudio.redis_client import get_async_redis_client
 
 # This lock prevents two coros trying to run kubectl login at the same time
 COMMAND = f"kubectl get job --namespace={settings.NAMESPACE}"
@@ -892,3 +898,94 @@ async def delete_k8s_resources_by_label(label_selector: str) -> str:
     except subprocess.CalledProcessError as e:
         logger.exception("Error occurred while deleting resources")
         return "Failed", f"Error occurred while deleting resources: {e}"
+
+
+async def cleanup_stale_pending_jobs():
+    """
+    Find and clean up stale pending jobs
+    1. look for pending jobs
+    2. call method to delete k8s reosurces
+    3. update db  (uses context manager to ensure the session is closed)
+    """
+
+    async with utils.get_db_ctx() as session:
+
+        threshold = datetime.now(timezone.utc) - timedelta(
+            hours=settings.CLEANUP_STALE_JOB_HOURS
+        )
+        tune_crud = crud.ItemCrud(Tunes)
+        pending_tunes = tune_crud.get_all(
+            session,
+            filters={"status": "Pending"},
+            filter_expr=Tunes.created_at < threshold,
+            ignore_user_check=True,
+        )
+
+        logger.info(
+            f"Found {len(pending_tunes)} stale pending jobs to clean up (threshold: {threshold})"
+        )
+
+        for tune in pending_tunes:
+
+            hours_pending = (
+                datetime.now(timezone.utc) - tune.created_at
+            ).total_seconds() / 3600
+            logger.info(f"Cleaning up {tune.id} which is {hours_pending:.1f} hours old")
+            try:
+                await evict_and_revoke_celery_task(tune.id)
+                await delete_k8s_job_resources(tune.id)
+
+                tune_crud.update(
+                    session,
+                    tune.id,
+                    item={  # type: ignore[arg-type]
+                        "status": "Failed",
+                        "logs": f"Job stuck in pending for {hours_pending:.1f}h. "
+                        f"Auto-cleaned at {datetime.now(timezone.utc).isoformat()}",
+                    },
+                    protected=False,
+                )
+                session.commit()
+                logger.info(f"✅ Successfully cleaned up {tune.id}")
+            except Exception:
+                logger.exception(f"❌ Error occurred while cleaning up {tune.id}")
+                session.rollback()
+                continue
+
+
+async def evict_and_revoke_celery_task(tune_id: str, queue_name: str = "geoft"):
+    """
+    Cancels and revokes a Celery task given its ID and queue name.
+    """
+    # Lazy import to avoid circular dependency
+    from gfmstudio.celery_worker import celery_app
+
+    try:
+        celery_app.control.revoke(
+            task_id=tune_id, terminate=True, queue=queue_name, signal="SIGKILL"
+        )
+        logger.info(f"Revoked Celery task {tune_id} from queue {queue_name}")
+
+        redis_client = await get_async_redis_client()
+
+        if redis_client:
+            try:
+                queue_length = await cast(Awaitable[int], redis_client.llen(queue_name))
+                if queue_length > 0:
+                    queue_items = await cast(
+                        Awaitable[list[str]], redis_client.lrange(queue_name, 0, -1)
+                    )
+                    for item in queue_items:
+                        if item and tune_id in str(item):
+                            await redis_client.lrem(queue_name, 0, item)
+                            logger.info(
+                                f"Removed task {tune_id} from redis {queue_name}"
+                            )
+                            break
+            finally:
+                await redis_client.close()
+
+    except Exception as e:
+        logger.error(
+            f"Error revoking Celery task {tune_id} from queue {queue_name}: {e}"
+        )

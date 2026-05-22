@@ -3,6 +3,7 @@
 
 
 import uuid
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.orm import Session
@@ -61,6 +62,15 @@ def get_db_sync():
             db.close()
         except Exception:
             pass  # Ignore close errors on dead connections
+
+
+@asynccontextmanager
+async def get_db_ctx() -> AsyncGenerator[Session, None]:
+    """
+    Context manager wrapper around get_db for background tasks/Celery.
+    """
+    async for session in get_db():
+        yield session
 
 
 def is_valid_uuid(value):
