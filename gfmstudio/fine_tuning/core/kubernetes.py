@@ -933,8 +933,7 @@ async def cleanup_stale_pending_jobs():
             logger.info(f"Cleaning up {tune.id} which is {hours_pending:.1f} hours old")
             try:
                 await evict_and_revoke_celery_task(tune.id)
-                kjob_id = f"kjob-{tune.id}".lower()
-                await delete_k8s_job_resources(kjob_id)
+                await delete_k8s_job_resources(tune.id)
 
                 tune_crud.update(
                     session,
