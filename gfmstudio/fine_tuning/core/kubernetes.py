@@ -606,7 +606,12 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
     # Direct resolution via unified status function
     status = await get_aggregate_job_and_pod_status(kjob_id)
 
-    if status in [JobState.SUCCEEDED, JobState.FAILED]:
+    if status in [
+        JobState.SUCCEEDED,
+        JobState.FAILED,
+        JobState.PENDING,
+        JobState.RUNNING,
+    ]:
         return status, kjob_id
 
     else:
