@@ -312,12 +312,12 @@ async def deploy_hpo_tuning_job(
         status = "Error"
 
     else:
-        # update status to In Progress
-        logger.info(f"In Progress for job {deployment_id}:  {stdoutdata}")
-        status = "In_progress"
+        # Job created successfully, but pod may still be pending
+        logger.info(f"Job created for {deployment_id}:  {stdoutdata}")
+        status = "Pending"
 
     logger.info("Deployment initiated and script executed successfully")
-    if settings.CELERY_TASKS_ENABLED and status == "In_progress":
+    if settings.CELERY_TASKS_ENABLED and status == "Pending":
         monitor_task = kwargs.get("_monitor_task")
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
         await monitor_k8_job_completion(
@@ -404,9 +404,9 @@ async def deploy_tuning_job(
             status = "Error"
 
         else:
-            # update status to In Progress
-            logger.info(f"In Progress for job {deployment_id}:  {stdoutdata}")
-            status = "In_progress"
+            # Job created successfully, but pod may still be pending
+            logger.info(f"Job created for {deployment_id}:  {stdoutdata}")
+            status = "Pending"
 
     elif tune_type == schemas.TuneOptionEnum.RAY_IO:
         deployment_id = f"rhoairay-{ftune_id}".lower()
@@ -448,7 +448,7 @@ async def deploy_tuning_job(
         )
 
     logger.info("Deployment initiated and script executed successfully")
-    if settings.CELERY_TASKS_ENABLED and status == "In_progress":
+    if settings.CELERY_TASKS_ENABLED and status == "Pending":
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
         # Extract monitor_task from kwargs if provided
         monitor_task = kwargs.get("_monitor_task")
@@ -612,7 +612,12 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
     # Direct resolution via unified status function
     status = await get_aggregate_job_and_pod_status(kjob_id)
 
-    if status in [JobState.SUCCEEDED, JobState.FAILED]:
+    if status in [
+        JobState.SUCCEEDED,
+        JobState.FAILED,
+        JobState.PENDING,
+        JobState.RUNNING,
+    ]:
         return status, kjob_id
 
     else:
