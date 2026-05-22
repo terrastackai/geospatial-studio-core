@@ -969,19 +969,21 @@ async def evict_and_revoke_celery_task(tune_id: str, queue_name: str = "geoft"):
         redis_client = await get_async_redis_client()
 
         if redis_client:
-            queue_length = await cast(Awaitable[int], redis_client.llen(queue_name))
-            if queue_length > 0:
-                queue_items = await cast(
-                    Awaitable[list[str]], redis_client.lrange(queue_name, 0, -1)
-                )
-                for item in queue_items:
-                    if item and tune_id in str(item):
-                        redis_client.lrem(queue_name, 0, item)
-                        logger.info(
-                            f"Removed Celery task {tune_id} from queue {queue_name}"
-                        )
-                        break
-            await redis_client.close()
+            try:
+                queue_length = await cast(Awaitable[int], redis_client.llen(queue_name))
+                if queue_length > 0:
+                    queue_items = await cast(
+                        Awaitable[list[str]], redis_client.lrange(queue_name, 0, -1)
+                    )
+                    for item in queue_items:
+                        if item and tune_id in str(item):
+                            await redis_client.lrem(queue_name, 0, item)
+                            logger.info(
+                                f"Removed task {tune_id} from redis {queue_name}"
+                            )
+                            break
+            finally:
+                await redis_client.close()
 
     except Exception as e:
         logger.error(
