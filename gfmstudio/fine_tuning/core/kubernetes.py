@@ -10,7 +10,6 @@ import subprocess
 import uuid
 from subprocess import PIPE, Popen
 
-import backoff
 import yaml
 from jinja2 import Template
 from kubernetes import client, config
@@ -19,6 +18,7 @@ from kubernetes.client.rest import ApiException
 from gfmstudio.config import BASE_DIR, settings
 from gfmstudio.fine_tuning import schemas
 from gfmstudio.fine_tuning.core.procs import ProcessError, check_output
+from gfmstudio.fine_tuning.core.schema import JobState
 from gfmstudio.log import logger
 
 # This lock prevents two coros trying to run kubectl login at the same time
@@ -306,12 +306,12 @@ async def deploy_hpo_tuning_job(
         status = "Error"
 
     else:
-        # update status to In Progress
-        logger.info(f"In Progress for job {deployment_id}:  {stdoutdata}")
-        status = "In_progress"
+        # Job created successfully, but pod may still be pending
+        logger.info(f"Job created for {deployment_id}:  {stdoutdata}")
+        status = "Pending"
 
     logger.info("Deployment initiated and script executed successfully")
-    if settings.CELERY_TASKS_ENABLED and status == "In_progress":
+    if settings.CELERY_TASKS_ENABLED and status == "Pending":
         monitor_task = kwargs.get("_monitor_task")
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
         await monitor_k8_job_completion(
@@ -398,9 +398,9 @@ async def deploy_tuning_job(
             status = "Error"
 
         else:
-            # update status to In Progress
-            logger.info(f"In Progress for job {deployment_id}:  {stdoutdata}")
-            status = "In_progress"
+            # Job created successfully, but pod may still be pending
+            logger.info(f"Job created for {deployment_id}:  {stdoutdata}")
+            status = "Pending"
 
     elif tune_type == schemas.TuneOptionEnum.RAY_IO:
         deployment_id = f"rhoairay-{ftune_id}".lower()
@@ -442,7 +442,7 @@ async def deploy_tuning_job(
         )
 
     logger.info("Deployment initiated and script executed successfully")
-    if settings.CELERY_TASKS_ENABLED and status == "In_progress":
+    if settings.CELERY_TASKS_ENABLED and status == "Pending":
         # For celery tasks, wait untill the kubernetes job is complete before exiting.
         # Extract monitor_task from kwargs if provided
         monitor_task = kwargs.get("_monitor_task")
@@ -557,19 +557,26 @@ async def get_aggregate_job_and_pod_status(job_name: str) -> str:
         The status of the job.
     """
     condition = await get_job_conditions(job_name)
-    terminal_statuses = (
-        f"{settings.K8S_JOB_SUCCESS_STATUSES},{settings.K8S_JOB_FAILURE_STATUSES}"
-    )
-    terminal_statuses = [s.strip().lower() for s in terminal_statuses.split(",")]
 
-    if condition in terminal_statuses:
-        return condition
+    if condition:
+        condition_lower = condition.lower()
+        if condition_lower in settings.job_succes_list:
+            return JobState.SUCCEEDED
+        elif condition_lower in settings.job_failure_list:
+            return JobState.FAILED
 
     # Job exists but no terminal condition → check pod
     pod_phase = await get_pod_phase(job_name)
-    if pod_phase:
-        return pod_phase
-    return "Unknown"
+    if not pod_phase:
+        return JobState.UNKNOWN
+
+    pod_phase_map = {
+        "running": JobState.RUNNING,
+        "pending": JobState.PENDING,
+        "succeeded": JobState.SUCCEEDED,
+        "failed": JobState.FAILED,
+    }
+    return pod_phase_map.get(pod_phase.lower(), JobState.UNKNOWN)
 
 
 async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
@@ -599,7 +606,12 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
     # Direct resolution via unified status function
     status = await get_aggregate_job_and_pod_status(kjob_id)
 
-    if status not in ["Running"]:
+    if status in [
+        JobState.SUCCEEDED,
+        JobState.FAILED,
+        JobState.PENDING,
+        JobState.RUNNING,
+    ]:
         return status, kjob_id
 
     else:
@@ -630,9 +642,9 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
                 # If still no status after retry, treat as Running
                 if result and result[0] is None:
                     logger.info(
-                        f"{job_name}: Job exists but no status yet, treating as Running"
+                        f"{job_name}: Job exists but no status yet, treating as {JobState.RUNNING}"
                     )
-                    return "Running", job_name
+                    return JobState.RUNNING, job_name
                 return result if result else ("Running", job_name)
 
         # Job exists but has no conditions - verify it exists and check pod status
@@ -650,7 +662,7 @@ async def check_tuning_task_status(tune_id: str, retry_label_lookup=True):
             # Job exists but no status conditions yet
             # Check if we should verify the pod phase
             logger.info(f"{kjob_id}: Job exists but no status yet → Running")
-            return "Running", kjob_id
+            return JobState.RUNNING, kjob_id
         # Job doesn't exist at all
         logger.warning(f"{kjob_id}: Job not found in cluster")
         return None, tune_id

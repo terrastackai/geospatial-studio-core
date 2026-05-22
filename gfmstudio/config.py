@@ -270,11 +270,17 @@ class Settings(BaseSettings):
     )
 
     # Job Status Configuration - stored as comma-separated strings
-    K8S_JOB_SUCCESS_STATUSES: str = Field(
-        default="Complete,Succeeded,SuccessCriteriaMet"
-    )
+    K8S_JOB_SUCCESS_STATUSES: str = "Complete,Succeeded,SuccessCriteriaMet"
 
-    K8S_JOB_FAILURE_STATUSES: str = Field(default="Failed,Error,FailureTarget")
+    K8S_JOB_FAILURE_STATUSES: str = "Failed,Error,FailureTarget"
+
+    @property
+    def job_succes_list(self):
+        return [s.strip().lower() for s in self.K8S_JOB_SUCCESS_STATUSES.split(",")]
+
+    @property
+    def job_failure_list(self):
+        return [s.strip().lower() for s in self.K8S_JOB_FAILURE_STATUSES.split(",")]
 
     ####################
     # DATASET FACTORY

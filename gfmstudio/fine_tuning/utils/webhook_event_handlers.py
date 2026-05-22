@@ -26,10 +26,9 @@ from gfmstudio.log import logger
 tune_crud = crud.ItemCrud(model=Tunes)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 
-terminal_statuses = (
-    f"{settings.K8S_JOB_SUCCESS_STATUSES},{settings.K8S_JOB_FAILURE_STATUSES}"
-)
-terminal_statuses = [s.strip().lower() for s in terminal_statuses.split(",")]
+job_terminal_statuses = [
+    status.lower() for status in (settings.job_succes_list + settings.job_failure_list)
+]
 
 
 async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
@@ -61,6 +60,7 @@ async def update_tune_status(tune_id: str, new_status: str, db: Session = None):
                 item={"status": new_status},
                 protected=False,
             )
+            session.commit()
             logger.info(f"{tune_id}: Updated status from Pending to {new_status}")
     except Exception as e:
         logger.warning(f"{tune_id}: Failed to update status: {e}")
@@ -85,7 +85,7 @@ async def free_k8s_resources(tune_id: str, max_wait_seconds: int = 3600):
     # delete resources
     k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
-    while k8s_job_status_lower not in terminal_statuses:
+    while k8s_job_status_lower not in job_terminal_statuses:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
             logger.error(
@@ -128,7 +128,7 @@ async def free_k8s_resources_by_label(tune_id: str, max_wait_seconds: int = 3600
 
     k8s_job_status_lower = str(k8s_job_status).lower()
     start_time = asyncio.get_event_loop().time()
-    while k8s_job_status_lower not in terminal_statuses:
+    while k8s_job_status_lower not in job_terminal_statuses:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > max_wait_seconds:
             logger.error(
@@ -244,7 +244,7 @@ async def handle_fine_tuning_webhooks(
             logger.debug(
                 f"{tune_id}: Tuning Task Errored and resources already deleted."
             )
-        await free_k8s_resources(tune_id)
+        asyncio.create_task(free_k8s_resources(tune_id))
 
     try:
         tune_id = str(event.detail["tune_id"])
@@ -257,6 +257,8 @@ async def handle_fine_tuning_webhooks(
                 item={"status": event.detail["status"], "logs": full_s3_log_file_path},
                 protected=False,
             )
+            session.commit()
+            logger.info(f"Successfully updated {tune_id} to {event.detail['status']}")
     except Exception:
         logger.exception("Tune status was not updated.")
 
