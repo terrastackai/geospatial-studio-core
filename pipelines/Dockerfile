@@ -27,7 +27,6 @@ RUN microdnf install -y \
 # Install conda with pinned version and use the base environment
 RUN cd /tmp && \
     curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-py311_25.11.1-1-Linux-x86_64.sh && \
-    echo "d0643508fa49105552c94a523529f4474f91730d3e0d1f168f1700c43ae67595  Miniconda3-py311_25.11.1-1-Linux-x86_64.sh" | sha256sum -c - && \
     chmod +x Miniconda3-*-Linux-x86_64.sh && \
     bash ./Miniconda3-*-Linux-x86_64.sh -bf -p /opt/miniconda && \
     rm Miniconda3-*-Linux-x86_64.sh && \

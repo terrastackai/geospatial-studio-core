@@ -6,7 +6,7 @@
 # Build Arguments
 ################################################################################
 ARG PYTHON_VERSION=3.11
-ARG CUDA_VERSION=11.8.0
+ARG CUDA_VERSION=11.8
 ARG CUDNN_VERSION=9
 ARG PYTORCH_VERSION=2.5.1
 # ARG BUILDPLATFORM=linux/amd64
