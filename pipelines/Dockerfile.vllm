@@ -38,7 +38,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir torch==2.4.1 --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install --no-cache-dir torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121 && \
     pip install --no-cache-dir vllm==${VLLM_VERSION} "terratorch[vllm]" GDAL==$(gdal-config --version)
 
 ################################################################################
