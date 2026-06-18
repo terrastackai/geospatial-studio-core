@@ -40,13 +40,17 @@ RUN mamba install -y -c conda-forge \
 # ################################################################################
 FROM pytorch/pytorch:${PYTORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime AS runtime
 USER root
-# Install only essential system packages with security updates
+# Install essential system packages with security updates and build tools
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     git \
     vim \
     curl \
+    gcc \
+    g++ \
+    make \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/* && \
     apt-get clean
 # Download and install kubectl (single RUN command for efficiency)
