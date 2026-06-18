@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM registry.access.redhat.com/ubi9/python-39
+FROM registry.access.redhat.com/ubi9/python-39:1-192
 USER root
 
-RUN pip install --upgrade pip
+RUN dnf update -y && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf && \
+    pip install --no-cache-dir --upgrade pip
 RUN pip install ipython nbformat pg8000 sqlalchemy python-dotenv
 ${requirements_docker}
 

@@ -1,13 +1,13 @@
 ################################################################################
 # Build Arguments
 ################################################################################
-ARG CUDA_VERSION=13.1.1
+ARG CUDA_VERSION=12.6.3
 ARG PYTHON_VERSION=3.12
 
 ################################################################################
 # Stage 1: Builder
 ################################################################################
-FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu24.04 AS builder
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu24.04@sha256:2b3b6c3a4d0e8c8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e AS builder
 
 ARG PYTHON_VERSION
 ARG VLLM_VERSION=0.17.1
@@ -16,7 +16,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     CUDA_HOME=/usr/local/cuda
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     python${PYTHON_VERSION} \
     python${PYTHON_VERSION}-venv \
     python${PYTHON_VERSION}-dev \
@@ -36,23 +38,26 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir torch==2.4.0 --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install --no-cache-dir torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121 && \
     pip install --no-cache-dir vllm==${VLLM_VERSION} "terratorch[vllm]" GDAL==$(gdal-config --version)
 
 ################################################################################
 # Stage 2: Runtime
 ################################################################################
-FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu24.04 AS runtime
+FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu24.04@sha256:2b3b6c3a4d0e8c8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e AS runtime
 
 ARG PYTHON_VERSION
 
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
+RUN apt-get update -y && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     python${PYTHON_VERSION} \
     python${PYTHON_VERSION}-dev \
     python${PYTHON_VERSION}-venv \
     libgomp1 \
     libgdal34 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"

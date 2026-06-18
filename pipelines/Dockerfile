@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal AS base
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.10-1130 AS base
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# Install system and runtime dependencies
-RUN true \
-    && microdnf -y update \
-    && microdnf install -y \
+# Install system and runtime dependencies with security updates
+RUN microdnf -y update --security && \
+    microdnf -y update && \
+    microdnf install -y \
         mesa-libGL cmake tar gzip jq procps vi rsync \
-    && microdnf clean all
+    && microdnf clean all && \
+    rm -rf /var/cache/yum
 
 #######################################################################################################
 ## Geospatial conda environment layer
@@ -24,21 +25,21 @@ RUN microdnf install -y \
     gcc \
 && microdnf clean all
 
-# Install conda and use the base environment and add link to pip in /usr/local/bin
-RUN true \
-&& cd /tmp \
-&& curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-py311_25.11.1-1-Linux-x86_64.sh \
-&& chmod +x Miniconda3-*-Linux-x86_64.sh \
-&& bash ./Miniconda3-*-Linux-x86_64.sh -bf -p /opt/miniconda \
-&& rm Miniconda3-*-Linux-x86_64.sh \
-&& /opt/miniconda/bin/conda config --system --add channels conda-forge \
-&& /opt/miniconda/bin/conda config --system --add channels nodefaults \
-&& /opt/miniconda/bin/conda config --system --remove channels defaults \
-&& /opt/miniconda/bin/conda config --system --set channel_priority strict \
-&& /opt/miniconda/bin/conda install -y sqlite gdal libgdal libgdal-arrow-parquet h5netcdf \
-&& /opt/miniconda/bin/conda clean -afy \
-&& ln -s /opt/miniconda/bin/pip /usr/local/bin/pip \
-&& /opt/miniconda/bin/conda update pip
+# Install conda with pinned version and use the base environment
+RUN cd /tmp && \
+    curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-py311_25.11.1-1-Linux-x86_64.sh && \
+    echo "d0643508fa49105552c94a523529f4474f91730d3e0d1f168f1700c43ae67595  Miniconda3-py311_25.11.1-1-Linux-x86_64.sh" | sha256sum -c - && \
+    chmod +x Miniconda3-*-Linux-x86_64.sh && \
+    bash ./Miniconda3-*-Linux-x86_64.sh -bf -p /opt/miniconda && \
+    rm Miniconda3-*-Linux-x86_64.sh && \
+    /opt/miniconda/bin/conda config --system --add channels conda-forge && \
+    /opt/miniconda/bin/conda config --system --add channels nodefaults && \
+    /opt/miniconda/bin/conda config --system --remove channels defaults && \
+    /opt/miniconda/bin/conda config --system --set channel_priority strict && \
+    /opt/miniconda/bin/conda install -y sqlite gdal libgdal libgdal-arrow-parquet h5netcdf && \
+    /opt/miniconda/bin/conda clean -afy && \
+    ln -s /opt/miniconda/bin/pip /usr/local/bin/pip && \
+    /opt/miniconda/bin/conda update pip
 
 ENV PATH=/opt/miniconda/bin:$PATH
 ENV PROJ_LIB=/opt/miniconda/share/proj/
