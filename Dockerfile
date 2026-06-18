@@ -6,9 +6,8 @@
 # with the data and inference services
 ###############################################################################
 ARG IMAGE_NAME=registry.access.redhat.com/ubi9/python-311
-ARG IMAGE_TAG=1-94
 
-FROM ${IMAGE_NAME}:${IMAGE_TAG} AS virtualenv
+FROM ${IMAGE_NAME}:latest AS virtualenv
 
 # hadolint ignore=DL3002
 USER root
@@ -28,7 +27,7 @@ RUN uv sync --frozen --no-dev --no-editable && \
     # Temporary fix for a runtime bug introduced by polars
     pip uninstall -y polars polars-runtime-32
 
-FROM ${IMAGE_NAME}:${IMAGE_TAG} AS download_stage
+FROM ${IMAGE_NAME}:latest AS download_stage
 
 # hadolint ignore=DL3002
 USER root
@@ -50,7 +49,7 @@ RUN tar -zxvf /tmp/helm-${HELM_VERSION}-linux-amd64.tar.gz -C /tmp && \
     chmod +x /usr/local/bin/helm && \
     rm -rf /tmp/*
 
-FROM ${IMAGE_NAME}:${IMAGE_TAG}
+FROM ${IMAGE_NAME}:latest
 
 WORKDIR /app
 

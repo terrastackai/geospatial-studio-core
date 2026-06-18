@@ -8,8 +8,7 @@ ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
 # Install system and runtime dependencies with security updates
-RUN microdnf -y update --security && \
-    microdnf -y update && \
+RUN microdnf -y update && \
     microdnf install -y \
         mesa-libGL cmake tar gzip jq procps vi rsync \
     && microdnf clean all && \
