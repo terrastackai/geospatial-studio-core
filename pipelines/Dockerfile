@@ -50,16 +50,18 @@ USER root
 
 RUN pip install --upgrade pip
 RUN pip install ipython nbformat pg8000 sqlalchemy
-# Install secure versions of vulnerable packages
+
+ADD requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+
+# Install secure versions of vulnerable packages AFTER requirements.txt
+# This upgrades packages that may have been pinned by dependencies like terrakit
 RUN pip install --upgrade \
     cryptography>=48.0.1 \
     pyjwt>=2.13.0 \
     urllib3>=2.7.0 \
     wheel>=0.46.2
-
-ADD requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt \
-    && rm /tmp/requirements.txt
 
 RUN mkdir /pipeline
 

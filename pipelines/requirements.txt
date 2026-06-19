@@ -30,8 +30,6 @@ tqdm
 wget
 xarray
 redis
-# Security fixes for High vulnerabilities
-urllib3>=2.7.0
 
 
 
