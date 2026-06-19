@@ -1,4 +1,5 @@
 
+# Security-updated dependencies for ITSS 6.7.2 compliance
 boto3==1.35.82
 botocore
 buildingregulariser
@@ -29,6 +30,8 @@ tqdm
 wget
 xarray
 redis
+# Security fixes for High vulnerabilities
+urllib3>=2.7.0
 
 
 

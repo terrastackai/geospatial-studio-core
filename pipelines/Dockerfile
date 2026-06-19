@@ -34,7 +34,7 @@ RUN cd /tmp && \
     /opt/miniconda/bin/conda config --system --add channels nodefaults && \
     /opt/miniconda/bin/conda config --system --remove channels defaults && \
     /opt/miniconda/bin/conda config --system --set channel_priority strict && \
-    /opt/miniconda/bin/conda install -y sqlite gdal libgdal libgdal-arrow-parquet h5netcdf && \
+    /opt/miniconda/bin/conda install -y sqlite gdal=3.13.1 libgdal=3.13.1 libgdal-arrow-parquet h5netcdf && \
     /opt/miniconda/bin/conda clean -afy && \
     ln -s /opt/miniconda/bin/pip /usr/local/bin/pip && \
     /opt/miniconda/bin/conda update pip
@@ -50,6 +50,12 @@ USER root
 
 RUN pip install --upgrade pip
 RUN pip install ipython nbformat pg8000 sqlalchemy
+# Install secure versions of vulnerable packages
+RUN pip install --upgrade \
+    cryptography>=48.0.1 \
+    pyjwt>=2.13.0 \
+    urllib3>=2.7.0 \
+    wheel>=0.46.2
 
 ADD requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt \
