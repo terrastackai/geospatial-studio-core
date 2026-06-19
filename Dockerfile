@@ -13,6 +13,7 @@ FROM ${IMAGE_NAME}:latest AS virtualenv
 USER root
 
 # Update base packages for security
+# Note: rasterio will use pre-built wheels that bundle GDAL, avoiding the need for system GDAL
 RUN dnf update -y && \
     dnf clean all && \
     rm -rf /var/cache/dnf
@@ -38,11 +39,11 @@ RUN true && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     chmod +x ./kubectl
 
-RUN curl -L https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_amd64 -o /usr/local/bin/yq && \
+RUN curl -L https://github.com/mikefarah/yq/releases/download/v4.44.6/yq_linux_amd64 -o /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq
 
-# Install Helm for managing Kubernetes Helm charts
-ARG HELM_VERSION=v3.16.1
+# Install Helm for managing Kubernetes Helm charts (latest version to fix Go vulnerabilities)
+ARG HELM_VERSION=v3.17.0
 ADD https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz /tmp
 RUN tar -zxvf /tmp/helm-${HELM_VERSION}-linux-amd64.tar.gz -C /tmp && \
     mv /tmp/linux-amd64/helm /usr/local/bin/helm && \
