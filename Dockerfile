@@ -12,10 +12,19 @@ FROM ${IMAGE_NAME}:latest AS virtualenv
 # hadolint ignore=DL3002
 USER root
 
-# Update base packages for security
+# Update base packages for security with specific CVE fixes
 # Note: rasterio will use pre-built wheels that bundle GDAL, avoiding the need for system GDAL
 RUN dnf update -y && \
-    dnf clean all && \
+    dnf upgrade -y \
+        openssl-libs \
+        openssl \
+        openssl-devel \
+        expat \
+        expat-devel \
+        mod_http2 \
+        rsync \
+        openssl-fips-provider \
+    && dnf clean all && \
     rm -rf /var/cache/dnf
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -35,15 +44,17 @@ USER root
 
 WORKDIR /downloads
 
-RUN true && \
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+# Install kubectl v1.33.0 (latest stable with security fixes for Go dependencies)
+RUN curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+    -o ./kubectl \
+    "https://dl.k8s.io/release/v1.33.0/bin/linux/amd64/kubectl" && \
     chmod +x ./kubectl
 
 RUN curl -L https://github.com/mikefarah/yq/releases/download/v4.44.6/yq_linux_amd64 -o /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq
 
-# Install Helm for managing Kubernetes Helm charts (latest version to fix Go vulnerabilities)
-ARG HELM_VERSION=v3.17.0
+# Install Helm v3.17.1 (latest version with Go security fixes)
+ARG HELM_VERSION=v3.17.1
 ADD https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz /tmp
 RUN tar -zxvf /tmp/helm-${HELM_VERSION}-linux-amd64.tar.gz -C /tmp && \
     mv /tmp/linux-amd64/helm /usr/local/bin/helm && \

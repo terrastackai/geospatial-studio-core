@@ -38,7 +38,7 @@ RUN cd /tmp && \
     /opt/miniconda/bin/conda clean -afy && \
     ln -s /opt/miniconda/bin/pip /usr/local/bin/pip && \
     /opt/miniconda/bin/conda update pip && \
-    /opt/miniconda/bin/conda install -y 'cryptography>=48.0.1' 'pyjwt>=2.13.0' 'urllib3>=2.7.0' 'wheel>=0.46.2' && \
+    /opt/miniconda/bin/conda install -y 'cryptography>=48.0.1' 'pyjwt>=2.13.0' 'urllib3>=2.7.0' 'wheel>=0.46.2' 'python-dotenv>=1.2.2' && \
     /opt/miniconda/bin/conda clean -afy
 
 ENV PATH=/opt/miniconda/bin:$PATH
@@ -63,7 +63,8 @@ RUN pip install --upgrade \
     cryptography>=48.0.1 \
     pyjwt>=2.13.0 \
     urllib3>=2.7.0 \
-    wheel>=0.46.2
+    wheel>=0.46.2 \
+    python-dotenv>=1.2.2
 
 RUN mkdir /pipeline
 
