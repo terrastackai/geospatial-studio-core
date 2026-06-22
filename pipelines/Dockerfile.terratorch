@@ -69,7 +69,7 @@ WORKDIR /terratorch
 # Install Python dependencies with security updates
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir --timeout=7200 \
-    git+https://github.com/terrastackai/terratorch.git@v1.2.3pre1 \
+    git+https://github.com/torchgeo/terratorch.git@v1.2.3pre1 \
     'mlflow>=3.11.0' \
     'diffusers>=0.38.0' \
     ipython \
