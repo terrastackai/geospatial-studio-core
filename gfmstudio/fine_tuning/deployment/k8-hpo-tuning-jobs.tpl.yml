@@ -94,9 +94,13 @@ spec:
           args: ["-c", "/ftuning/ftuning.sh"]
           env:
             - name: HF_HOME
-              value: /tmp/huggingface
+              value: "${HF_HOME}"
             - name: TRANSFORMERS_CACHE
-              value: /tmp/huggingface
+              value: "${TRANSFORMERS_CACHE}"
+            - name: HF_HUB_OFFLINE
+              value: "${HF_HUB_OFFLINE}"
+            - name: TRANSFORMERS_OFFLINE
+              value: "${TRANSFORMERS_OFFLINE}"
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
       volumes:

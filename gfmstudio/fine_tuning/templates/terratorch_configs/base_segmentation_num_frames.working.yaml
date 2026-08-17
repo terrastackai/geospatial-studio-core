@@ -132,10 +132,11 @@ model:
   init_args:
     model_args: 
       {%- if pretrained_model_name == "prithvi_eo_v1_100" or pretrained_model_name == "prithvi_eo_v2_300" or pretrained_model_name == "prithvi_eo_v2_300_tl" or pretrained_model_name == "prithvi_eo_v2_600" or pretrained_model_name == "prithvi_eo_v2_600_tl" %}
-      backbone_pretrained: true 
+      backbone_pretrained: true
       backbone: {{ pretrained_model_name }}
-      backbone_ckpt_path: {{ pretrained_weights_path }} 
-      backbone_drop_path: 0.1 
+      backbone_pretrained_cfg_overlay:
+        file: {{ pretrained_weights_path }}
+      backbone_drop_path: 0.1
       # ToDo: Move to base template
       {% if model["decode_head"]["backbone_num_frames"] -%}
       backbone_num_frames: {{ model["decode_head"]["backbone_num_frames"] | int }}

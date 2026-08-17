@@ -13,7 +13,6 @@ import string
 from typing import Any, Dict, Optional, Tuple
 
 import yaml
-from asyncer import asyncify
 from fastapi import HTTPException
 from jinja2 import BaseLoader, Environment, runtime
 from sqlalchemy.orm import Session
@@ -22,7 +21,7 @@ from gfmstudio.celery_worker import deploy_tuning_job_celery_task
 from gfmstudio.common.api import crud
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning import schemas
-from gfmstudio.fine_tuning.core import object_storage, tunes
+from gfmstudio.fine_tuning.core import tunes
 from gfmstudio.fine_tuning.core.kubernetes import (
     check_tuning_task_status,
     deploy_tuning_job,
@@ -45,7 +44,7 @@ from gfmstudio.fine_tuning.models import BaseModels, GeoDataset, Tunes, TuneTemp
 from gfmstudio.fine_tuning.utils.geoserver_handlers import convert_to_geoserver_sld
 
 tune_crud = crud.ItemCrud(model=Tunes)
-from gfmstudio.common.api import crud, utils
+from gfmstudio.common.api import crud
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +211,7 @@ async def get_rendered_tuning_template(
 
                 return model_configs_obj, rendered_tune_template
             else:
-                msg = f"{backbone_model_name} modalities expected to be one of: {terramind_supported_modalities}"
+                msg = f"{backbone_model_name} modalities {image_modality} expected to be one of: {terramind_supported_modalities}"
                 raise HTTPException(
                     status_code=422,
                     detail={msg: msg},

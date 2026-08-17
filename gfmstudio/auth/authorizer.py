@@ -6,7 +6,7 @@ import base64
 import datetime
 import functools
 import json
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import requests
 from cachetools import TTLCache
@@ -50,9 +50,10 @@ def get_redis_auth_key(api_key: str) -> str:
 def get_auth_config(well_known_url: Optional[str] = None):
     well_known_url = (
         well_known_url
+        or settings.OAUTH_ENDPOINT
         or "https://geostudio.verify.ibm.com/oidc/endpoint/default/.well-known/openid-configuration"  # noqa: E501
     )
-    response = requests.get(well_known_url)
+    response = requests.get(well_known_url, timeout=10)
     response.raise_for_status()
     return response.json()
 
@@ -308,9 +309,7 @@ async def load_user(user: UserRequestSchema, db: Optional[Session] = None):
         )
         if not exiting_user:
             normalized_user = user.model_copy(update={"email": normalized_email})
-            user_crud.create(
-                db=db_session, item=normalized_user, user=normalized_email
-            )
+            user_crud.create(db=db_session, item=normalized_user, user=normalized_email)
 
 
 async def auth_handler(
