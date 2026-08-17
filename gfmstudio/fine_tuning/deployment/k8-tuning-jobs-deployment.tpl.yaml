@@ -65,6 +65,9 @@ spec:
         - name: dshm
           emptyDir:
             medium: Memory
+        - name: mount-backbone-models
+          persistentVolumeClaim:
+            claimName: gfm-ft-models-pvc
         - name: config-volume
           configMap:
             name: ${FTUNE_NAME}-config
@@ -95,6 +98,8 @@ spec:
               mountPath: /geotunes
             - name: dshm
               mountPath: /dev/shm
+            - name: mount-backbone-models
+              mountPath: /terratorch/gfm_models
             - name: persistent-storage
               mountPath: /app/config
             - name: ftuning-script
@@ -112,6 +117,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: HF_HOME
+              value: ${HF_HOME}
+            - name: TRANSFORMERS_CACHE
+              value: ${TRANSFORMERS_CACHE}
+            - name: HF_HUB_OFFLINE
+              value: "${HF_HUB_OFFLINE}"
+            - name: TRANSFORMERS_OFFLINE
+              value: "${TRANSFORMERS_OFFLINE}"
       tolerations:
         # - effect: NoSchedule
           # key: node-role.kubernetes.io/infra

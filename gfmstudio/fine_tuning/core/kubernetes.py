@@ -10,7 +10,6 @@ import subprocess
 import uuid
 from subprocess import PIPE, Popen
 
-import backoff
 import yaml
 from jinja2 import Template
 from kubernetes import client, config
@@ -385,6 +384,10 @@ async def deploy_tuning_job(
             str(settings.RUN_TERRATORCH_TEST),
             str(settings.APPEND_SECURITY_CONTEXT),
             str(settings.SECURITY_CONTEXT_FSGROUP),
+            str(settings.HF_HOME),  # ${20}
+            str(settings.TRANSFORMERS_CACHE),  # ${21}
+            str(settings.HF_HUB_OFFLINE),  # ${22}
+            str(settings.TRANSFORMERS_OFFLINE),  # ${23}
         ]
         logger.info(f"Executing command: {command}")
 

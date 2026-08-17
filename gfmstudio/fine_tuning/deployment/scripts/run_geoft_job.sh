@@ -52,6 +52,10 @@ export RUN_TERRATORCH_TEST=${16}
 export APPEND_SECURITY_CONTEXT=${17:-false}
 export SECURITY_CONTEXT_FSGROUP=${18:-2000}
 export NODE_AFFINITY=${19}
+export HF_HOME=${20:-/tmp/huggingface}
+export TRANSFORMERS_CACHE=${21:-/tmp/huggingface}
+export HF_HUB_OFFLINE=${22:-}
+export TRANSFORMERS_OFFLINE=${23:-}
 
 # Replace the variable and properly indent the content
 sed '/\${TUNING_CONFIG_YAML}/{

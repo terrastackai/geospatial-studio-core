@@ -180,6 +180,29 @@ class Settings(BaseSettings):
         description="Path in the pod where the backbone models PVC is mounted",
         default="/terratorch/",
     )
+    HF_HOME: str = Field(
+        description="Directory for HuggingFace cache inside the fine-tuning pod.",
+        default="/tmp/huggingface",
+    )
+    TRANSFORMERS_CACHE: str = Field(
+        description="Directory for Transformers model cache inside the fine-tuning pod.",
+        default="/tmp/huggingface",
+    )
+    HF_HUB_OFFLINE: str = Field(
+        description=(
+            "Set to '1' to block all outbound HuggingFace Hub calls in the "
+            "fine-tuning pod (air-gapped mode). Leave empty (default) to use "
+            "the traditional HuggingFace download path."
+        ),
+        default="",
+    )
+    TRANSFORMERS_OFFLINE: str = Field(
+        description=(
+            "Set to '1' to run transformers in offline mode inside the "
+            "fine-tuning pod. Leave empty (default) for normal online mode."
+        ),
+        default="",
+    )
     FILES_PVC: Optional[str] = Field(
         description="Name of the Persistent Volume ", default="gfm-ft-files-pvc"
     )
