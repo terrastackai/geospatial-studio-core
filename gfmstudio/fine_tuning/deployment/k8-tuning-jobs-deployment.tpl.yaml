@@ -118,9 +118,9 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: HF_HOME
-              value: ${HF_HOME}
+              value: "${HF_HOME}"
             - name: TRANSFORMERS_CACHE
-              value: ${TRANSFORMERS_CACHE}
+              value: "${TRANSFORMERS_CACHE}"
             - name: HF_HUB_OFFLINE
               value: "${HF_HUB_OFFLINE}"
             - name: TRANSFORMERS_OFFLINE
