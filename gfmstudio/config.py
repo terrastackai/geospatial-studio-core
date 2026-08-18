@@ -182,7 +182,7 @@ class Settings(BaseSettings):
     )
     HF_HOME: str = Field(
         description="Directory for HuggingFace cache inside the fine-tuning pod.",
-        default="/tmp/huggingface",
+        default="/terratorch/gfm_models",
     )
     TRANSFORMERS_CACHE: str = Field(
         description="Directory for Transformers model cache inside the fine-tuning pod.",
