@@ -186,7 +186,7 @@ class Settings(BaseSettings):
     )
     TRANSFORMERS_CACHE: str = Field(
         description="Directory for Transformers model cache inside the fine-tuning pod.",
-        default="/tmp/huggingface",
+        default="/terratorch/gfm_models",
     )
     HF_HUB_OFFLINE: str = Field(
         description=(
