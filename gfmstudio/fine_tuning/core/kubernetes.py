@@ -384,10 +384,10 @@ async def deploy_tuning_job(
             str(settings.RUN_TERRATORCH_TEST),
             str(settings.APPEND_SECURITY_CONTEXT),
             str(settings.SECURITY_CONTEXT_FSGROUP),
-            str(settings.HF_HOME),  # ${20}
-            str(settings.TRANSFORMERS_CACHE),  # ${21}
-            str(settings.HF_HUB_OFFLINE),  # ${22}
-            str(settings.TRANSFORMERS_OFFLINE),  # ${23}
+            str(settings.HF_HOME),  # ${19}
+            str(settings.TRANSFORMERS_CACHE),  # ${20}
+            str(settings.HF_HUB_OFFLINE),  # ${21}
+            str(settings.TRANSFORMERS_OFFLINE),  # ${22}
         ]
         logger.info(f"Executing command: {command}")
 
