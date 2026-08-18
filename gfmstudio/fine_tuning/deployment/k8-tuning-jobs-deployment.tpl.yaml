@@ -190,6 +190,8 @@ data:
     
     echo "Running start tuning task..."
     sleep 5
+    export HF_HOME=/terratorch/gfm_models
+    echo $HF_HOME
 
     # Fine tuning command
     terratorch fit -c /app/config/config-train.yaml
