@@ -136,8 +136,7 @@ model:
       backbone: {{ pretrained_model_name }} # clay_v1_base
       backbone_pretrained: true
       {% if pretrained_weights_path %}
-      backbone_pretrained_cfg_overlay:
-        file: {{ pretrained_weights_path }}
+      backbone_ckpt_path: {{ pretrained_weights_path }}
       {% endif %}
       num_classes: {{ classes|length }}
       backbone_img_size: {{ model["backbone_img_size"] }}

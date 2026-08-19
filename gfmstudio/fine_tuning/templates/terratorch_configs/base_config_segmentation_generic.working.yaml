@@ -137,8 +137,7 @@ model:
       backbone_pretrained: true
       backbone: {{ pretrained_model_name }}
       {% if pretrained_weights_path %}
-      backbone_pretrained_cfg_overlay:
-        file: {{ pretrained_weights_path }}
+      backbone_ckpt_path: {{ pretrained_weights_path }}
       {% endif %}
       backbone_drop_path: 0.1
       backbone_bands:

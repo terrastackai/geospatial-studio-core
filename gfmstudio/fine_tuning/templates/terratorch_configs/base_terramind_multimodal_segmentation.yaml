@@ -184,8 +184,7 @@ model:
       #  terramind_v1_base  # large version: terramind_v1_large
       backbone_pretrained: true
       {% if pretrained_weights_path %}
-      backbone_pretrained_cfg_overlay:
-        file: {{ pretrained_weights_path }}
+      backbone_ckpt_path: {{ pretrained_weights_path }}
       {% endif %}
       {%- if image_modalities %}
       backbone_modalities:

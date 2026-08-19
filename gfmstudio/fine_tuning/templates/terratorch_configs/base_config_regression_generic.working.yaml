@@ -129,8 +129,9 @@ model:
       {%- if pretrained_model_name == "prithvi_eo_v1_100" or pretrained_model_name == "prithvi_eo_v2_300" or pretrained_model_name == "prithvi_eo_v2_300_tl" or pretrained_model_name == "prithvi_eo_v2_600" or pretrained_model_name == "prithvi_eo_v2_600_tl" %}
       backbone_pretrained: true
       backbone: {{ pretrained_model_name }}
-      backbone_pretrained_cfg_overlay:
-        file: {{ pretrained_weights_path }}
+      {% if pretrained_weights_path %}
+      backbone_ckpt_path: {{ pretrained_weights_path }}
+      {% endif %}
       backbone_drop_path: 0.1
       backbone_bands:
         {{ output_bands.values() | list | first | to_yaml | indent(8) }}
