@@ -703,6 +703,9 @@ def get_runtime_image(data_in: schemas.TuneSubmitIn, created_tune) -> str:
         runtime_image = created_tune.tune_template.extra_info.get("runtime_image")
 
     if not runtime_image:
+        runtime_image = settings.FTUNING_RUNTIME_IMAGE
+
+    if not runtime_image:
         raise HTTPException(
             status_code=422,
             detail="Task must be configured with a valid runtime image",

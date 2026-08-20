@@ -56,7 +56,8 @@ export TRANSFORMERS_CACHE=${20}
 export HF_HUB_OFFLINE=${21}
 export TRANSFORMERS_OFFLINE=${22}
 export FTUNING_IMAGE_PULL_POLICY=${23:-Always}
-export NODE_AFFINITY=${24} # If adding new variables, add above this one; make sure this one is always last
+export FTUNING_INIT_CONTAINER_IMAGE=${24:-busybox}
+export NODE_AFFINITY=${25} # If adding new variables, add above this one; make sure this one is always last
 
 # Replace the variable and properly indent the content
 sed '/\${TUNING_CONFIG_YAML}/{

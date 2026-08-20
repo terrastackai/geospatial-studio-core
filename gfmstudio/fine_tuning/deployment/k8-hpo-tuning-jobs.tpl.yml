@@ -48,7 +48,7 @@ spec:
       ${NODE_AFFINITY}
       initContainers:
         - name: copy-config
-          image: busybox
+          image: ${FTUNING_INIT_CONTAINER_IMAGE}
           imagePullPolicy: ${FTUNING_IMAGE_PULL_POLICY}
           command:
           - sh

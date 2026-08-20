@@ -213,6 +213,24 @@ class Settings(BaseSettings):
         ),
         default="Always",
     )
+    FTUNING_RUNTIME_IMAGE: Optional[str] = Field(
+        description=(
+            "Default fine-tuning runtime image (terratorch) used when the "
+            "tune template and the request payload do not specify one. "
+            "Set this to pin a cluster-wide default image so operators do not "
+            "need to embed the image in every tune template."
+        ),
+        default=None,
+    )
+    FTUNING_INIT_CONTAINER_IMAGE: str = Field(
+        description=(
+            "Image used for the initContainer that copies the training config "
+            "into the shared PVC before the fine-tuning runtime starts. "
+            "Defaults to 'busybox'. Override to use a mirrored or air-gapped "
+            "equivalent when the public Docker Hub registry is not reachable."
+        ),
+        default="busybox",
+    )
     FILES_PVC: Optional[str] = Field(
         description="Name of the Persistent Volume ", default="gfm-ft-files-pvc"
     )
