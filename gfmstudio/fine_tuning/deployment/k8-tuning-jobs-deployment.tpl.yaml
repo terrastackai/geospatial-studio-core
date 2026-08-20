@@ -48,7 +48,7 @@ spec:
         - name: ${IMAGE_PULL_SECRET}
       initContainers:
         - name: copy-config
-          image: busybox
+          image: docker.io/library/busybox:latest
           imagePullPolicy: ${FTUNING_IMAGE_PULL_POLICY}
           command: ['sh', '-c', 'cp /config/config-train.yaml /app/config/']
           volumeMounts:
