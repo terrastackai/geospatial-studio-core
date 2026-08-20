@@ -291,6 +291,11 @@ async def deploy_hpo_tuning_job(
         str(settings.RESOURCE_REQUEST_Memory),
         str(settings.RESOURCE_REQUEST_GPU),
         str(settings.RUN_TERRATORCH_TEST),
+        str(settings.HF_HOME),  # ${19}
+        str(settings.TRANSFORMERS_CACHE),  # ${20}
+        str(settings.HF_HUB_OFFLINE),  # ${21}
+        str(settings.TRANSFORMERS_OFFLINE),  # ${22}
+        str(settings.FTUNING_IMAGE_PULL_POLICY),  # ${23}
         str(node_affinity),
     ]
     logger.info(f"Executing command: {command}")
@@ -388,6 +393,7 @@ async def deploy_tuning_job(
             str(settings.TRANSFORMERS_CACHE),  # ${20}
             str(settings.HF_HUB_OFFLINE),  # ${21}
             str(settings.TRANSFORMERS_OFFLINE),  # ${22}
+            str(settings.FTUNING_IMAGE_PULL_POLICY),  # ${23}
         ]
         logger.info(f"Executing command: {command}")
 

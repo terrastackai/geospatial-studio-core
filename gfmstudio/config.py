@@ -203,6 +203,16 @@ class Settings(BaseSettings):
         ),
         default="",
     )
+    FTUNING_IMAGE_PULL_POLICY: str = Field(
+        description=(
+            "imagePullPolicy for the fine-tuning runtime container. "
+            "Defaults to 'Always' for online deployments. Set to "
+            "'IfNotPresent' when GEOSTUDIO_OFFLINE=true so the pod uses the "
+            "image already present on the node rather than attempting an "
+            "outbound registry pull."
+        ),
+        default="Always",
+    )
     FILES_PVC: Optional[str] = Field(
         description="Name of the Persistent Volume ", default="gfm-ft-files-pvc"
     )

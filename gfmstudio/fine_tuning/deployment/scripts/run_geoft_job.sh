@@ -51,11 +51,12 @@ export RESOURCE_REQUEST_GPU=${15:-1}
 export RUN_TERRATORCH_TEST=${16}
 export APPEND_SECURITY_CONTEXT=${17:-false}
 export SECURITY_CONTEXT_FSGROUP=${18:-2000}
-export HF_HOME=${19:-/terratorch/gfm_models}
-export TRANSFORMERS_CACHE=${20:-/terratorch/gfm_models}
-export HF_HUB_OFFLINE=${21:-}
-export TRANSFORMERS_OFFLINE=${22:-}
-export NODE_AFFINITY=${23} # If adding new variables, add above this one; make sure this one is always last
+export HF_HOME=${19}
+export TRANSFORMERS_CACHE=${20}
+export HF_HUB_OFFLINE=${21}
+export TRANSFORMERS_OFFLINE=${22}
+export FTUNING_IMAGE_PULL_POLICY=${23:-Always}
+export NODE_AFFINITY=${24} # If adding new variables, add above this one; make sure this one is always last
 
 # Replace the variable and properly indent the content
 sed '/\${TUNING_CONFIG_YAML}/{

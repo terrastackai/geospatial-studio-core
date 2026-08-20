@@ -48,8 +48,8 @@ spec:
         - name: ${IMAGE_PULL_SECRET}
       initContainers:
         - name: copy-config
-          image: docker.io/library/busybox:latest
-          imagePullPolicy: IfNotPresent
+          image: busybox
+          imagePullPolicy: ${FTUNING_IMAGE_PULL_POLICY}
           command: ['sh', '-c', 'cp /config/config-train.yaml /app/config/']
           volumeMounts:
             - name: config-volume
@@ -91,7 +91,7 @@ spec:
               cpu: '${RESOURCE_REQUEST_CPU}'
               memory: ${RESOURCE_REQUEST_Memory}G
               nvidia.com/gpu: '${RESOURCE_REQUEST_GPU}'
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: ${FTUNING_IMAGE_PULL_POLICY}
           volumeMounts:
             - name: mount-data
               mountPath: /ft-data
