@@ -49,7 +49,7 @@ spec:
       initContainers:
         - name: copy-config
           image: ${FTUNING_INIT_CONTAINER_IMAGE}
-          imagePullPolicy: ${FTUNING_IMAGE_PULL_POLICY}
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
           command:
           - sh
           - -c
@@ -68,7 +68,7 @@ spec:
       containers:
         - name:  hpo-tune
           image: ${FTUNING_RUNTIME_IMAGE}
-          imagePullPolicy: ${FTUNING_IMAGE_PULL_POLICY}
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
           resources:
             limits:
               cpu: '${RESOURCE_LIMIT_CPU}'

@@ -295,7 +295,7 @@ async def deploy_hpo_tuning_job(
         str(settings.TRANSFORMERS_CACHE),  # ${20}
         str(settings.HF_HUB_OFFLINE),  # ${21}
         str(settings.TRANSFORMERS_OFFLINE),  # ${22}
-        str(settings.FTUNING_IMAGE_PULL_POLICY),  # ${23}
+        str(settings.IMAGE_PULL_POLICY),  # ${23}
         str(settings.FTUNING_INIT_CONTAINER_IMAGE),  # ${24}
         str(node_affinity),  # ${25}
     ]
@@ -394,7 +394,7 @@ async def deploy_tuning_job(
             str(settings.TRANSFORMERS_CACHE),  # ${20}
             str(settings.HF_HUB_OFFLINE),  # ${21}
             str(settings.TRANSFORMERS_OFFLINE),  # ${22}
-            str(settings.FTUNING_IMAGE_PULL_POLICY),  # ${23}
+            str(settings.IMAGE_PULL_POLICY),  # ${23}
             str(settings.FTUNING_INIT_CONTAINER_IMAGE),  # ${24}
         ]
         logger.info(f"Executing command: {command}")

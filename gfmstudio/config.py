@@ -203,13 +203,13 @@ class Settings(BaseSettings):
         ),
         default="",
     )
-    FTUNING_IMAGE_PULL_POLICY: str = Field(
+    IMAGE_PULL_POLICY: str = Field(
         description=(
-            "imagePullPolicy for the fine-tuning runtime container. "
-            "Defaults to 'Always' for online deployments. Set to "
-            "'IfNotPresent' when GEOSTUDIO_OFFLINE=true so the pod uses the "
-            "image already present on the node rather than attempting an "
-            "outbound registry pull."
+            "imagePullPolicy for all studio job containers (fine-tuning, HPO, "
+            "and dataset onboarding). Defaults to 'Always' for online "
+            "deployments. Set to 'IfNotPresent' when GEOSTUDIO_OFFLINE=true so "
+            "pods use the image already present on the node rather than "
+            "attempting an outbound registry pull."
         ),
         default="Always",
     )
