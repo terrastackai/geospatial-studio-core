@@ -1,10 +1,22 @@
 {
-   "settingsInheritedFrom": "whitesource-config/whitesource-config@python3.9",
-   "enableRenovate": true,
-   "remediateSettings": {
-     "workflowRules": {
-         "enabled": true
-     }
-   },
-   "extends": ["config:recommended"]
+  "settingsInheritedFrom": "whitesource-config/whitesource-config@python3.9",
+  "enableRenovate": true,
+  "remediateSettings": {
+    "workflowRules": {
+        "enabled": true
+    }
+  },
+  "extends": ["config:recommended"],
+  "scanSettings": {
+    "baseBranches": []
+  },
+  "checkRunSettings": {
+    "vulnerableCheckRunConclusionLevel": "failure",
+    "displayMode": "diff",
+    "useMendCheckNames": true
+  },
+  "issueSettings": {
+    "minSeverityLevel": "LOW",
+    "issueType": "DEPENDENCY"
+  }
 }
