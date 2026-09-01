@@ -134,7 +134,10 @@ model:
   init_args:
     model_args: 
       backbone: {{ pretrained_model_name }} # clay_v1_base
-      backbone_pretrained: true 
+      backbone_pretrained: true
+      {% if pretrained_weights_path %}
+      backbone_ckpt_path: {{ pretrained_weights_path }}
+      {% endif %}
       num_classes: {{ classes|length }}
       backbone_img_size: {{ model["backbone_img_size"] }}
       backbone_bands:

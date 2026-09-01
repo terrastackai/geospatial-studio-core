@@ -48,7 +48,8 @@ spec:
       ${NODE_AFFINITY}
       initContainers:
         - name: copy-config
-          image: busybox
+          image: ${FTUNING_INIT_CONTAINER_IMAGE}
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
           command:
           - sh
           - -c
@@ -67,7 +68,7 @@ spec:
       containers:
         - name:  hpo-tune
           image: ${FTUNING_RUNTIME_IMAGE}
-          imagePullPolicy: Always
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
           resources:
             limits:
               cpu: '${RESOURCE_LIMIT_CPU}'
@@ -94,9 +95,13 @@ spec:
           args: ["-c", "/ftuning/ftuning.sh"]
           env:
             - name: HF_HOME
-              value: /tmp/huggingface
+              value: "${HF_HOME}"
             - name: TRANSFORMERS_CACHE
-              value: /tmp/huggingface
+              value: "${TRANSFORMERS_CACHE}"
+            - name: HF_HUB_OFFLINE
+              value: "${HF_HUB_OFFLINE}"
+            - name: TRANSFORMERS_OFFLINE
+              value: "${TRANSFORMERS_OFFLINE}"
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
       volumes:

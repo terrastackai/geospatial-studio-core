@@ -30,7 +30,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import and_, literal_column, or_
+from sqlalchemy import and_, literal_column
 from sqlalchemy.orm import Session
 
 from gfmstudio.auth import authorizer
@@ -1452,7 +1452,11 @@ async def get_base_by_id(
     visibility_filter = build_visibility_filter(
         BaseModels, user, ArtifactType.backbone, db
     )
-    data = db.query(BaseModels).filter(and_(BaseModels.id == base_id, visibility_filter)).first()
+    data = (
+        db.query(BaseModels)
+        .filter(and_(BaseModels.id == base_id, visibility_filter))
+        .first()
+    )
     if not data:
         raise HTTPException(404, detail=f"Base Model {base_id} not found")
 
@@ -1730,7 +1734,11 @@ async def get_task_content_template(
     visibility_filter = build_visibility_filter(
         TuneTemplate, user, ArtifactType.task_template, db
     )
-    data = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
+    data = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not data:
         raise HTTPException(404, detail=f"Task {task_id} not found")
     content = base64.b64decode(data.content or "")
@@ -1779,7 +1787,11 @@ async def update_task_schema(
     visibility_filter = build_visibility_filter(
         TuneTemplate, user, ArtifactType.task_template, db
     )
-    task = db.query(TuneTemplate).filter(and_(TuneTemplate.id == task_id, visibility_filter)).first()
+    task = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -2339,7 +2351,8 @@ async def onboard_dataset(
         f"'s|dataset-id|{created_item.id}|g; "
         f"s|DATA_PVC_NAME|{settings.DATA_PVC}|g; "
         f"s|DATASET_PIPELINE_IMAGE|{settings.DATASET_PIPELINE_IMAGE}|g; "
-        f"s|IMAGE_PULL_SECRET|{settings.FT_IMAGE_PULL_SECRETS}|g' "
+        f"s|IMAGE_PULL_SECRET|{settings.FT_IMAGE_PULL_SECRETS}|g; "
+        f"s|FTUNING_IMAGE_PULL_POLICY|{settings.IMAGE_PULL_POLICY}|g' "
         f"{kjob_tpl}"
     )
 
@@ -2407,18 +2420,23 @@ async def onboard_dataset(
         logger.info("Job deployment file created " + str(create_deployment_file_output))
 
         # Add security context for job deployments
-        if settings.APPEND_SECURITY_CONTEXT and settings.APPEND_SECURITY_CONTEXT.lower() == "true":
+        if (
+            settings.APPEND_SECURITY_CONTEXT
+            and settings.APPEND_SECURITY_CONTEXT.lower() == "true"
+        ):
             add_security_context_command = (
                 f"sed -i '/serviceAccountName: api-gateway-sa/a\\"
                 f"      securityContext:\\n"
                 f"        fsGroup: {settings.SECURITY_CONTEXT_FSGROUP}\\n"
-                f"        fsGroupChangePolicy: \"OnRootMismatch\"' "
+                f'        fsGroupChangePolicy: "OnRootMismatch"\' '
                 f"{kjob_tpl}"
             )
             security_context_output = subprocess.check_output(
                 add_security_context_command, shell=True
             )
-            logger.info("Security context added for job: " + str(security_context_output))
+            logger.info(
+                "Security context added for job: " + str(security_context_output)
+            )
 
         replace_id_output = subprocess.check_output(
             replace_dataset_id_command, shell=True
@@ -2473,7 +2491,11 @@ async def retrieve_dataset(
     visibility_filter = build_visibility_filter(
         GeoDataset, user, ArtifactType.dataset, db
     )
-    item = db.query(GeoDataset).filter(and_(GeoDataset.id == dataset_id, visibility_filter)).first()
+    item = (
+        db.query(GeoDataset)
+        .filter(and_(GeoDataset.id == dataset_id, visibility_filter))
+        .first()
+    )
     if not item:
         raise HTTPException(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}

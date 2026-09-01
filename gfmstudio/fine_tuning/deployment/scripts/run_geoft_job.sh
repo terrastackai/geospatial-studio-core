@@ -51,7 +51,13 @@ export RESOURCE_REQUEST_GPU=${15:-1}
 export RUN_TERRATORCH_TEST=${16}
 export APPEND_SECURITY_CONTEXT=${17:-false}
 export SECURITY_CONTEXT_FSGROUP=${18:-2000}
-export NODE_AFFINITY=${19}
+export HF_HOME=${19}
+export TRANSFORMERS_CACHE=${20}
+export HF_HUB_OFFLINE=${21}
+export TRANSFORMERS_OFFLINE=${22}
+export IMAGE_PULL_POLICY=${23:-Always}
+export FTUNING_INIT_CONTAINER_IMAGE=${24:-busybox}
+export NODE_AFFINITY=${25} # If adding new variables, add above this one; make sure this one is always last
 
 # Replace the variable and properly indent the content
 sed '/\${TUNING_CONFIG_YAML}/{

@@ -48,7 +48,8 @@ spec:
         - name: ${IMAGE_PULL_SECRET}
       initContainers:
         - name: copy-config
-          image: busybox
+          image: ${FTUNING_INIT_CONTAINER_IMAGE}
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
           command: ['sh', '-c', 'cp /config/config-train.yaml /app/config/']
           volumeMounts:
             - name: config-volume
@@ -65,6 +66,9 @@ spec:
         - name: dshm
           emptyDir:
             medium: Memory
+        - name: mount-backbone-models
+          persistentVolumeClaim:
+            claimName: gfm-ft-models-pvc
         - name: config-volume
           configMap:
             name: ${FTUNE_NAME}-config
@@ -87,7 +91,7 @@ spec:
               cpu: '${RESOURCE_REQUEST_CPU}'
               memory: ${RESOURCE_REQUEST_Memory}G
               nvidia.com/gpu: '${RESOURCE_REQUEST_GPU}'
-          imagePullPolicy: Always
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
           volumeMounts:
             - name: mount-data
               mountPath: /ft-data
@@ -95,6 +99,8 @@ spec:
               mountPath: /geotunes
             - name: dshm
               mountPath: /dev/shm
+            - name: mount-backbone-models
+              mountPath: /terratorch/gfm_models
             - name: persistent-storage
               mountPath: /app/config
             - name: ftuning-script
@@ -112,6 +118,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: HF_HOME
+              value: "${HF_HOME}"
+            - name: TRANSFORMERS_CACHE
+              value: "${TRANSFORMERS_CACHE}"
+            - name: HF_HUB_OFFLINE
+              value: "${HF_HUB_OFFLINE}"
+            - name: TRANSFORMERS_OFFLINE
+              value: "${TRANSFORMERS_OFFLINE}"
       tolerations:
         # - effect: NoSchedule
           # key: node-role.kubernetes.io/infra

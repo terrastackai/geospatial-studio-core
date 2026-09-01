@@ -180,6 +180,57 @@ class Settings(BaseSettings):
         description="Path in the pod where the backbone models PVC is mounted",
         default="/terratorch/",
     )
+    HF_HOME: str = Field(
+        description="Directory for HuggingFace cache inside the fine-tuning pod.",
+        default="/terratorch/gfm_models",
+    )
+    TRANSFORMERS_CACHE: str = Field(
+        description="Directory for Transformers model cache inside the fine-tuning pod.",
+        default="/terratorch/gfm_models",
+    )
+    HF_HUB_OFFLINE: str = Field(
+        description=(
+            "Set to '1' to block all outbound HuggingFace Hub calls in the "
+            "fine-tuning pod (air-gapped mode). Leave empty (default) to use "
+            "the traditional HuggingFace download path."
+        ),
+        default="",
+    )
+    TRANSFORMERS_OFFLINE: str = Field(
+        description=(
+            "Set to '1' to run transformers in offline mode inside the "
+            "fine-tuning pod. Leave empty (default) for normal online mode."
+        ),
+        default="",
+    )
+    IMAGE_PULL_POLICY: str = Field(
+        description=(
+            "imagePullPolicy for all studio job containers (fine-tuning, HPO, "
+            "and dataset onboarding). Defaults to 'Always' for online "
+            "deployments. Set to 'IfNotPresent' when GEOSTUDIO_OFFLINE=true so "
+            "pods use the image already present on the node rather than "
+            "attempting an outbound registry pull."
+        ),
+        default="Always",
+    )
+    FTUNING_RUNTIME_IMAGE: Optional[str] = Field(
+        description=(
+            "Default fine-tuning runtime image (terratorch) used when the "
+            "tune template and the request payload do not specify one. "
+            "Set this to pin a cluster-wide default image so operators do not "
+            "need to embed the image in every tune template."
+        ),
+        default=None,
+    )
+    FTUNING_INIT_CONTAINER_IMAGE: str = Field(
+        description=(
+            "Image used for the initContainer that copies the training config "
+            "into the shared PVC before the fine-tuning runtime starts. "
+            "Defaults to 'busybox'. Override to use a mirrored or air-gapped "
+            "equivalent when the public Docker Hub registry is not reachable."
+        ),
+        default="busybox",
+    )
     FILES_PVC: Optional[str] = Field(
         description="Name of the Persistent Volume ", default="gfm-ft-files-pvc"
     )

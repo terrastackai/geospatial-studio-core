@@ -134,7 +134,10 @@ model:
   init_args:
     model_args: 
       backbone: {{ pretrained_model_name }} # timm_resnet34 , timm_resnet18 , timm_resnet50 , timm_resnet101 , timm_resnet152
-      backbone_pretrained: true 
+      backbone_pretrained: true
+      {% if pretrained_weights_path %}
+      backbone_ckpt_path: {{ pretrained_weights_path }}
+      {% endif %}
       num_classes: {{ classes|length }}
       backbone_in_chans: {{ output_bands.values() | list | first | length }} # To be used with RGB when pretrained, can be more if not retrained
       necks: 

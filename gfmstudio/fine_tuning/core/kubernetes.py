@@ -10,7 +10,6 @@ import subprocess
 import uuid
 from subprocess import PIPE, Popen
 
-import backoff
 import yaml
 from jinja2 import Template
 from kubernetes import client, config
@@ -292,7 +291,13 @@ async def deploy_hpo_tuning_job(
         str(settings.RESOURCE_REQUEST_Memory),
         str(settings.RESOURCE_REQUEST_GPU),
         str(settings.RUN_TERRATORCH_TEST),
-        str(node_affinity),
+        str(settings.HF_HOME),  # ${19}
+        str(settings.TRANSFORMERS_CACHE),  # ${20}
+        str(settings.HF_HUB_OFFLINE),  # ${21}
+        str(settings.TRANSFORMERS_OFFLINE),  # ${22}
+        str(settings.IMAGE_PULL_POLICY),  # ${23}
+        str(settings.FTUNING_INIT_CONTAINER_IMAGE),  # ${24}
+        str(node_affinity),  # ${25}
     ]
     logger.info(f"Executing command: {command}")
 
@@ -385,6 +390,12 @@ async def deploy_tuning_job(
             str(settings.RUN_TERRATORCH_TEST),
             str(settings.APPEND_SECURITY_CONTEXT),
             str(settings.SECURITY_CONTEXT_FSGROUP),
+            str(settings.HF_HOME),  # ${19}
+            str(settings.TRANSFORMERS_CACHE),  # ${20}
+            str(settings.HF_HUB_OFFLINE),  # ${21}
+            str(settings.TRANSFORMERS_OFFLINE),  # ${22}
+            str(settings.IMAGE_PULL_POLICY),  # ${23}
+            str(settings.FTUNING_INIT_CONTAINER_IMAGE),  # ${24}
         ]
         logger.info(f"Executing command: {command}")
 
