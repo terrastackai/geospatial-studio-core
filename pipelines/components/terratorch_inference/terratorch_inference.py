@@ -9,21 +9,19 @@ This starter component script
 # Dependencies
 # pip install ibm-cos-sdk requests tenacity pyyaml opentelemetry-distro opentelemetry-exporter-otlp
 
+import glob
+import json
 import os
 import shutil
-import json
-import glob
-import yaml
-import time
 import subprocess
 
-
+import yaml
 from gfm_data_processing.common import logger, notify_gfmaas_ui, report_exception
 from gfm_data_processing.metrics import MetricManager
 from terratorch_inference_utils import (
-    read_json_with_retries,
     copy_tiffs,
     delete_tmp_dir,
+    read_json_with_retries,
 )
 
 # Uncomment next 2 lines for local testing
@@ -45,8 +43,9 @@ process_id = os.getenv("process_id", "terratorch-inference")
 
 metric_manager = MetricManager(component_name=process_id)
 
-stdout_log = os.environ.get('GFM_STDOUT_LOG')
-stderr_log = os.environ.get('GFM_STDERR_LOG')
+stdout_log = os.environ.get("GFM_STDOUT_LOG")
+stderr_log = os.environ.get("GFM_STDERR_LOG")
+
 
 @metric_manager.count_failures(inference_id=inference_id, task_id=task_id)
 @metric_manager.record_duration(inference_id=inference_id, task_id=task_id)
@@ -130,16 +129,25 @@ def run_terratorch_inference():
                         and modality_tag in filename
                     ):
                         # Split filename by "_" and remove modality_tag
-                        parts = filename.split("_")
-                        new_parts = [part for part in parts if part != modality_tag]
-                        new_filename = "_".join(new_parts)
+                        # If imputed at the end, move it one level up
+                        b, extension = filename.rsplit(".", 1)
+                        parts = b.split("_")
 
+                        if "imputed" == parts[-1]:
+                            parts.insert(-1, parts.pop(parts.index("imputed")))
+                        # ToDo: Add a better logic when imputed is not at the end.
+                        # For now, according to url_connect, it will always be at the end.
+
+                        new_parts = [part for part in parts if part != modality_tag]
+                        # Make sure that file_suffiix is the last item before the .tif/.tiff
+                        new_filename = "_".join(new_parts)
+                        new_filename = new_filename + "." + extension
                         # Build full paths
                         old_path = os.path.join(task_folder, filename)
                         new_path = os.path.join(tmp_folder, new_filename)
 
                         # Copy the file
-                        print(f"Copying {old_path} to {new_path}")
+                        logger.info(f"Copying {old_path} to {new_path}")
                         shutil.copy2(old_path, new_path)
 
             # make dict here
@@ -149,13 +157,7 @@ def run_terratorch_inference():
 
             input_data_spec = json.dumps(temp_spec)
 
-            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root "{input_data_spec}"'
-
-            ## TODO: Terramind not happy with image_grep command, remove it for now. (Fix later)
-            # for i in config["data"]["init_args"]["modalities"]:
-            #     img_grep = [X for X in task_dict["imputed_input_image"] if i in X][0]
-
-            #     terratorch_cli_command += f' --data.init_args.img_grep.{i} "{img_grep}"'
+            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root "{input_data_spec}"'  # noqa: E501
         # Regression needs the prediction files to be in a separate folder.
         elif (
             "GenericNonGeoPixelwiseRegressionDataModule" == config["data"]["class_path"]
@@ -177,11 +179,9 @@ def run_terratorch_inference():
                 old_path=task_folder,
                 new_path=tmp_regression_images_dir,
             )
-            model_config_path_not_tiled = (
-                f"{tune_path}/config_deploy_not_tiled.yaml"
-            )
+            model_config_path_not_tiled = f"{tune_path}/config_deploy_not_tiled.yaml"
             input_data_spec = tmp_regression_images_dir
-            terratorch_cli_command = f'terratorch predict -c "{model_config_path_not_tiled}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec}'
+            terratorch_cli_command = f'terratorch predict -c "{model_config_path_not_tiled}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec}'  # noqa: E501
 
         else:
             input_data_spec = output_folder
@@ -189,15 +189,15 @@ def run_terratorch_inference():
                 img_grep = task_dict["imputed_input_image"][0]
             elif isinstance(task_dict["imputed_input_image"], str):
                 img_grep = task_dict["imputed_input_image"]
-            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec} --data.init_args.img_grep {img_grep}'
+            terratorch_cli_command = f'terratorch predict -c "{model_config_path}" --ckpt_path "{model_checkpoint_path}" --predict_output_dir {output_folder} --data.init_args.predict_data_root {input_data_spec} --data.init_args.img_grep {img_grep}'  # noqa: E501
 
         ## Now run the command and get a list of the inference output tifs
 
-        terratorch_cli_command = f'python -u -m {terratorch_cli_command}'
+        terratorch_cli_command = f"python -u -m {terratorch_cli_command}"
         print(terratorch_cli_command)
 
         env = os.environ.copy()
-        env['PYTHONUNBUFFERED'] = '1'
+        env["PYTHONUNBUFFERED"] = "1"
         with open(stdout_log, "a") as log_file:
             process = subprocess.Popen(
                 terratorch_cli_command,
@@ -206,17 +206,19 @@ def run_terratorch_inference():
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                env=env
+                env=env,
             )
-            for line in iter(process.stdout.readline, ''):
+            for line in iter(process.stdout.readline, ""):
                 log_file.write(line)
                 log_file.flush()
                 os.fsync(log_file.fileno())
 
             return_code = process.wait()
-            
+
             if return_code != 0:
-                raise RuntimeError(f"TerraTorch inference failed with exit code {return_code}")
+                raise RuntimeError(
+                    f"TerraTorch inference failed with exit code {return_code}"
+                )
 
         os.system("sync")
 
@@ -227,8 +229,8 @@ def run_terratorch_inference():
         pred_files = glob.glob(f"{output_folder}/*_pred.tif")
         if not pred_files:
             raise FileNotFoundError(
-            f"{pred_files} : No prediction file(s) found. Inference failed."
-        )
+                f"{pred_files} : No prediction file(s) found. Inference failed."
+            )
 
         print(f"Prediction Files: {pred_files}")
         model_output_image = glob.glob(f"{output_folder}/*_pred.tif")[0]
