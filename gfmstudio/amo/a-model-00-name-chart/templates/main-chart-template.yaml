@@ -161,8 +161,10 @@ spec:
     spec:
       serviceAccountName: {{ .Values.serviceAccountName }}
       hostname: gfm-inf-{{ .Values.modelID }}-{{ .Values.resourceName }}
+      {{- if .Values.imagePullSecretName }}
       imagePullSecrets:
         - name: {{ .Values.imagePullSecretName }}
+      {{- end }}
       {{ if eq .Values.configureInferenceToleration "setToleration" }}
       tolerations:
         - operator: "Exists"

@@ -28,6 +28,38 @@ pipelines_bucket_name = settings.PIPELINES_V2_COS_BUCKET
 EXPERIMENTAL_MODEL_NAMING = "sandbox"
 
 
+def read_log_file_tail(
+    file_path: str, lines: Optional[int] = None
+) -> tuple[List[str], int]:
+    """
+    Read log file and return last N lines.
+
+    Args:
+        file_path: Path to the log file
+        lines: Number of lines to return from end (None = all lines)
+
+    Returns:
+        Tuple of (list of lines, total line count)
+    """
+    if not os.path.exists(file_path):
+        logger.warning(f"Log file does not exist: {file_path}")
+        return [], 0
+
+    try:
+        logger.info(f"Reading log file: {file_path}")
+        with open(file_path, "r") as f:
+            all_lines = f.readlines()
+            total_lines = len(all_lines)
+
+            if lines and total_lines > lines:
+                return all_lines[-lines:], total_lines
+            else:
+                return all_lines, total_lines
+    except Exception as e:
+        logger.error(f"Error reading log file {file_path}: {e}")
+        return [], 0
+
+
 def is_model_inference_ready(model_obj: Model) -> bool:
     """
     Determine if the given model is ready for inference.
@@ -221,25 +253,28 @@ def get_pipeline_steps(inference: schemas.InferenceCreateInput, model_obj) -> li
 def insert_generic_processor_to_pipeline_steps(
     pipeline_steps: list, generic_processor_step: dict
 ) -> list:
-    """Insert generic processor step into pipeline steps right before the push_to_geoserver."""
+    """Insert generic processor step into pipeline steps right before the postprocess-generic."""
 
-    # Find the index of the item with process_id 'push-to-geoserver'
-    push_to_geoserver_index = next(
+    # Find the index of the item with process_id 'postprocess-generic'
+    postprocess_generic_index = next(
         i
         for i, step in enumerate(pipeline_steps)
-        if step["process_id"] == "push-to-geoserver"
+        if step["process_id"] == "postprocess-generic"
     )
 
-    # Adjust the step_number of the new item to match 'push-to-geoserver'
-    generic_processor_step["step_number"] = pipeline_steps[push_to_geoserver_index][
+    # Adjust the step_number of the new item to match 'postprocess-generic'
+    generic_processor_step["step_number"] = pipeline_steps[postprocess_generic_index][
         "step_number"
     ]
 
-    # Insert the new item before 'push-to-geoserver'
-    pipeline_steps.insert(push_to_geoserver_index, generic_processor_step)
+    # Insert the new item before 'postprocess-generic'
+    pipeline_steps.insert(postprocess_generic_index, generic_processor_step)
+
+    # Increment the step_number of 'postprocess-generic'
+    pipeline_steps[postprocess_generic_index + 1]["step_number"] += 1
 
     # Increment the step_number of 'push-to-geoserver'
-    pipeline_steps[push_to_geoserver_index + 1]["step_number"] += 1
+    pipeline_steps[postprocess_generic_index + 2]["step_number"] += 1
 
     return pipeline_steps
 

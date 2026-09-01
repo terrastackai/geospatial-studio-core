@@ -27,7 +27,7 @@ def check_url_input(url, task_id, inference_id):
     logger.debug(f"{task_id}: {url}")
     try:
         filename = urlparse(url).path.rsplit("/", 1)[-1]
-        response = requests.get(url)
+        response = requests.get(url, verify=False)
     except:
         report_exception(
             event_id=inference_id,

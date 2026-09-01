@@ -3,7 +3,7 @@
 
 
 import ast
-import contextlib
+import glob
 import json
 import logging
 import os
@@ -13,26 +13,24 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 from urllib.parse import urljoin
-import requests
-from sqlalchemy import create_engine, text
 
 # Uncomment next 2 lines for local testing
 import dotenv
+import requests
+from sqlalchemy import create_engine, text
+
 dotenv.load_dotenv()
 
 process_id = os.getenv("process_id", "sentinelhub_connector")
 process_exec = os.getenv("process_exec", "python sentinelhub_connector_single.py")
 orchestrate_db_uri = os.getenv("orchestrate_db_uri", "")
 inf_task_table = os.getenv("inference_task_table", "task")
-stop_exit_code = int(os.getenv("stop_exit_code", 9876))
+stop_exit_code = int(os.getenv("stop_exit_code", 177))
 gfmaas_api_base_url = os.getenv("gfmaas_api_base_url", "")
 gfmaas_api_key = os.getenv("gfmaas_api_key", "")
 log_level = os.getenv("log_level", "INFO")
 generic_processor_folder = os.getenv("generic_processor_folder", "/generic_data")
-
-# import
 
 
 def configure_logger(log_level):
@@ -110,56 +108,57 @@ def notify_gfmaas_ui(
         logger.error("Failed to send task status. Reason: (%s)", ex)
 
 
+def stream_to_file(pipe, file, echo=False):
+    for line in pipe.stdout:
+        file.write(line)
+        file.flush()
+
+
 def run_and_log(task_id, process_exec, process_id, inference_folder):
     std_out_log_name = f"{inference_folder}/{task_id}/{task_id}-{process_id}-stdout.log"
     std_err_log_name = f"{inference_folder}/{task_id}/{task_id}-{process_id}-stderr.log"
+
     try:
-        with open(std_out_log_name, "w") as so:
-            with open(std_err_log_name, "w") as se:
-                with contextlib.redirect_stdout(so):
-                    with contextlib.redirect_stderr(se):
-                        ("-----INVOKING TASK-----------------------------------")
-                        logger.debug(
-                            "-----INVOKING TASK-----------------------------------"
-                        )
-                        print("-----INVOKING TASK-----------------------------------")
-                        logger.debug(f"Task ID: {task_id}")
-                        print(f"Task ID: {task_id}")
-                        logger.debug(f"Command: {process_exec}")
-                        print(f"Command: {process_exec}")
-                        try:
-                            result = subprocess.run(
-                                process_exec,
-                                shell=True,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                check=True,
-                                env=os.environ.copy(),
-                            )
-                            output = result.stdout.decode("utf-8")
-                            logger.debug(f"Output: {str(output)}")
-                            print(f"Output: {str(output)}")
-                            logger.debug(f"Return code: {result.returncode}")
-                            print(f"Return code: {result.returncode}")
-                            return result.returncode
-                        except subprocess.CalledProcessError as sub_ex:
-                            logger.error(
-                                f"Task ID: {task_id} Command: {process_exec} exited with error: {sub_ex}"
-                            )
-                            if sub_ex.stdout:
-                                error_stdout = sub_ex.stdout.decode("utf-8")
-                                logger.debug(f"Error stdout: {error_stdout}")
-                                print(f"Error stdout: {error_stdout}")
-                            if sub_ex.stderr:
-                                error_stderr = sub_ex.stderr.decode("utf-8")
-                                logger.debug(f"Error stderr: {error_stderr}")
-                                print(f"Error stderr: {error_stderr}")
-                            return sub_ex.returncode
-                        except Exception as ex:
-                            logger.error(
-                                f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
-                            )
-                            return 500
+        with open(std_out_log_name, "a", buffering=1) as so:
+            with open(std_err_log_name, "a", buffering=1) as se:
+                so.write("-----INVOKING TASK-----------------------------------\n")
+                so.write(f"Task ID: {task_id}\n")
+                so.write(f"Command: {process_exec}\n")
+                so.flush()
+
+                try:
+                    env = os.environ.copy()
+                    env["PYTHONUNBUFFERED"] = "1"
+                    env["GFM_STDOUT_LOG"] = std_out_log_name
+                    env["GFM_STDERR_LOG"] = std_err_log_name
+                    env["GFM_LOG_LEVEL"] = "DEBUG"
+
+                    process = subprocess.Popen(
+                        process_exec,
+                        shell=True,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        env=env,
+                        bufsize=1,
+                        universal_newlines=True,
+                    )
+
+                    stream_to_file(pipe=process, file=so)
+
+                    returncode = process.wait()
+
+                    so.write(f"\nReturn code: {returncode}\n")
+                    so.flush()
+
+                    return returncode
+
+                except Exception as ex:
+                    error_msg = f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
+                    so.write(f"\nError: {error_msg}\n")
+                    so.flush()
+                    return 500
+
     except Exception as ex:
         logger.error(
             f"Task ID: {task_id} Command: {process_exec} exited with error: {ex}"
@@ -176,13 +175,13 @@ def grab_new_task(engine, process_id):
         task_search_sql = text(
             f"""UPDATE {inf_task_table} SET pipeline_steps = jsonb_set(jsonb_set(pipeline_steps, array[elem_index::text, 'status'], '"RUNNING"'::jsonb), array[elem_index::text, 'start_time'], '"{start_time}"'::jsonb)
         FROM (
-            select 
+            select
                 pos- 1 as elem_index, id as tid
             FROM {inf_task_table} t CROSS JOIN LATERAL jsonb_array_elements(t.pipeline_steps) AS p(j),
                 jsonb_array_elements(pipeline_steps) with ordinality arr(elem, pos)
             where
                 elem->>'process_id' = '{process_id}' AND p->>'process_id' = '{process_id}' AND p->>'status'='READY'
-            ORDER BY priority DESC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED) AS sub_arrange
+            ORDER BY priority ASC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED) AS sub_arrange
             WHERE id=tid RETURNING task_id, inference_id, inference_folder, status;"""
         )
 
@@ -284,7 +283,7 @@ def update_status_after_run(engine, process_id, inference_id, task_id, new_state
 
 def get_generic_processor_values(inference_folder: str, task_id: str):
     logger.info(
-        f">>>>>> Detected generic-python-processor, about to read script from inference_config file"
+        ">>>>>> Detected generic-python-processor, about to read script from inference_config file"
     )
     # read the script from the inference_config.yaml file
     inference_config_path = f"{inference_folder}/{inference_id}_config.json"
@@ -537,10 +536,25 @@ while True:
             # )
             # Add logic when file has no main function
 
+            # Always expect the uploaded generic python scripts to accept the --input and --output folders.
+            output_folder = f"{inference_folder}/{task_id}"
+            input_folder = (
+                pred_files[0]
+                if (pred_files := glob.glob(f"{output_folder}/*_pred.tif"))
+                else output_folder
+            )
+            processor_parameters.update(
+                {"input": input_folder, "output": output_folder}
+            )
+
             process_exec = f"opentelemetry-instrument python {processor_file_path}"
+
             if processor_parameters:
                 for param_key, param_value in processor_parameters.items():
                     process_exec += f" --{param_key} {param_value}"
+            else:
+                # provide the default values
+                process_exec += f" --input {input_folder} --output {output_folder}"
 
             logger.info(
                 f">>>>>> Constructed process_exec for generic-python-processor: {process_exec}"

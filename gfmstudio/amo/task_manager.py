@@ -23,7 +23,7 @@ class AmoTaskManager:
         Args:
             task_id: Task identifier
         """
-        db = db or next(utils.get_db())
+        db = db or next(utils.get_db_sync())
         task_id = task_id if task_id.startswith("amo-") else f"amo-{task_id}"
         tasks = self.task_crud.get_all(
             db=db,
@@ -46,7 +46,7 @@ class AmoTaskManager:
             model_id: Model identifier
             status: New status to set
         """
-        db = db or next(utils.get_db())
+        db = db or next(utils.get_db_sync())
         task_id = task_id if task_id.startswith("amo-") else f"amo-{task_id}"
 
         # Check if exists:
@@ -71,9 +71,7 @@ class AmoTaskManager:
                 user=user,
             )
 
-    def get_task_status(
-        self, task_id: str, user: str, db: Session = None
-    ) -> OnboardingStatus:
+    def get_task_status(self, task_id: str, user: str, db: Session = None) -> OnboardingStatus:
         """
         Get task status for a model.
 
@@ -86,7 +84,7 @@ class AmoTaskManager:
         Raises:
             HTTPException: If task not found
         """
-        db = db or next(utils.get_db())
+        db = db or next(utils.get_db_sync())
         task_id = task_id if task_id.startswith("amo-") else f"amo-{task_id}"
         task = self._check_availability(task_id=task_id, user=user, db=db)
         if task:

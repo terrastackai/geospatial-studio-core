@@ -69,6 +69,7 @@ import numpy as np
 import rasterio
 import requests
 import wget
+import ssl
 from botocore.client import Config
 from rio_cogeo.cogeo import cog_validate
 from sklearn.model_selection import train_test_split
@@ -147,15 +148,19 @@ def notify_df_api(onboarding_details: dict = None):
     """
     logger.info("Notify the dataset-factory API onboarding status")
     event_data = {
+        "event_id": str(uuid.uuid4()),
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "detail": onboarding_details,
+        "detail_type": "FT:Data:Onboarding",
+        "source": "com.ibm.dataset-factory-onboarding",
     }
-    if "notifications" in df_webhooks_url:
+    if "notifications" in df_webhooks_url and onboarding_details["status"] in [
+        "Succeeded",
+        "Failed",
+    ]:
         event_data.update(
             {
-                "event_id": str(uuid.uuid4()),
                 "detail_type": "FT:Data:Finished",
-                "source": "com.ibm.dataset-factory-onboarding",
             }
         )
 
@@ -306,6 +311,7 @@ def download_dataset(source_url: str, destination: str):
     try:
         if not os.path.exists(destination):
             os.makedirs(destination)
+        ssl._create_default_https_context = ssl._create_unverified_context
         filename = wget.download(source_url, out=destination)  # might not be a zip here
         if zipfile.is_zipfile(filename):
             with zipfile.ZipFile(filename, "r") as zip_ref:
@@ -708,7 +714,7 @@ def main():
 
     onboarding_details = {}
 
-    working_path = "/data/" + payload["dataset_id"]
+    working_path = "/pipeline/data/" + payload["dataset_id"]
 
     dataset_bucket = os.getenv("DATA_BUCKET", "geoft-service-datasets")
 
@@ -880,12 +886,19 @@ def main():
 
 if __name__ == "__main__":
     try:
+        start_onboarding_details = {}
+        start_onboarding_details["dataset_id"] = dataset_id
+        start_onboarding_details["status"] = "Onboarding"
+        start_onboarding_details["error_code"] = default_error["code"]
+        start_onboarding_details["error_message"] = default_error["message"]
+        notify_df_api(start_onboarding_details)
         main()
     except Exception as e:
         logger.error(
-            "An exception occurred when onboarding the dataset", stack_info=True
+            f"An exception occurred when onboarding the dataset: {str(e)}",
+            exc_info=True,
+            stack_info=True
         )
-        logger.error("Exception - " + str(e))
         error["message"] = str(e)
         onboarding_details = {}
         populate_onboarding_details(

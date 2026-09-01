@@ -117,7 +117,9 @@ async def invoke_inference_v2_pipelines_handler(
         Missing data or service unavailable.
 
     """
-    session = session or next(utils.get_db())
+    if session is None:
+        db_gen = utils.get_db()
+        session = await anext(db_gen)
     inference_id = payload["inference_id"]
     model_name = payload.get("model_internal_name")
 
@@ -138,9 +140,7 @@ async def invoke_inference_v2_pipelines_handler(
     if settings.DATA_ADVISOR_ENABLED and len(bbox[0]) > 0:
         try:
             event = payload["inference_id"]
-            logger.info(
-                f"{event} - Data Advisor Enabled... Taking a peek at available data 👀🔎🔎..."
-            )
+            logger.info(f"{event} - Data Advisor Enabled... Taking a peek at available data 👀🔎🔎...")
 
             dates = service_payload["temporal_domain"]
             params = {
@@ -165,17 +165,12 @@ async def invoke_inference_v2_pipelines_handler(
                     error_detail = j.get("message")
                     if error_detail:
                         bounding_box = resp["results"][i]["bbox"]
-                        logger.info(
-                            f"Data Advisor data unavailable for bbox:  {bounding_box}..."
-                            f"{error_detail}"
-                        )
+                        logger.info(f"Data Advisor data unavailable for bbox:  {bounding_box}...{error_detail}")
                         service_payload["spatial_domain"]["bbox"].remove(bounding_box)
                         count -= 1
                 if count == 0:
                     # All bounding boxes or urls have no data... Update status of the inference.
-                    logger.info(
-                        f"{event} - Data Advisor data unavailable ... Inferencing Failed ..."
-                    )
+                    logger.info(f"{event} - Data Advisor data unavailable ... Inferencing Failed ...")
                     await update_inference_status(
                         inference_id=inference_id,
                         status=EventStatus.FAILED,
@@ -192,9 +187,7 @@ async def invoke_inference_v2_pipelines_handler(
                 else:
                     res = resp["results"]
                     logger.debug(f"Data advisor results: {res}")
-                    logger.info(
-                        f"{event} - Data Advisor data available ... Inferencing ..."
-                    )
+                    logger.info(f"{event} - Data Advisor data available ... Inferencing ...")
             else:
                 logger.warning(
                     f"{event} - Data-advisor service Error (status-code: {resp.status_code})"
@@ -224,9 +217,7 @@ async def invoke_inference_v2_pipelines_handler(
             if error_info == "n/a":
                 # show validation errors
                 if '"code":"RequestValidationError"' in exc.details():
-                    detail = literal_eval(json.loads(exc.details())["description"])[0][
-                        "msg"
-                    ]
+                    detail = literal_eval(json.loads(exc.details())["description"])[0]["msg"]
                 else:
                     detail = f"Inference service for {payload['model_id']} temporarily unavailable."
             else:
@@ -295,17 +286,13 @@ async def save_predicted_layers(
         geoserver_layers = item.geoserver_layers or {}
         predicted_layers = geoserver_layers.get("predicted_layers", [])
         existing_bboxes = geoserver_layers.get("bbox_pred")
-        existing_layer_urls = {
-            item.get("uri") for item in predicted_layers if "uri" in item
-        }
+        existing_layer_urls = {item.get("uri") for item in predicted_layers if "uri" in item}
         for layer in layers:
             coverage_store = layer.get("coverageStore", {})
             workspace_name = coverage_store.get("workspace", {}).get("name")
             layer_name = coverage_store.get("name", "")
             uri = f"{workspace_name}:{layer_name}"
-            display_name = (
-                layer.get("display_name", "") or layer_name.rsplit("-", 1)[-1]
-            )
+            display_name = layer.get("display_name", "") or layer_name.rsplit("-", 1)[-1]
 
             if uri not in existing_layer_urls:
                 predicted_layers.append(
@@ -324,9 +311,7 @@ async def save_predicted_layers(
 
         if existing_bboxes and bbox_pred[0] not in existing_bboxes:
             existing_bboxes.append(bbox_pred[0])
-            merged_bboxes = merge_bounding_boxes(
-                bbox1=bbox_pred[0], bbox2=existing_bboxes[0]
-            )
+            merged_bboxes = merge_bounding_boxes(bbox1=bbox_pred[0], bbox2=existing_bboxes[0])
             if merged_bboxes not in existing_bboxes:
                 existing_bboxes.append(merged_bboxes)
         bbox_pred = existing_bboxes if existing_bboxes else bbox_pred
@@ -360,9 +345,7 @@ async def save_predicted_layers(
     return updated_item
 
 
-async def cleanup_autodeployed_model_resources(
-    db, user, model_id: str, model_name: str
-):
+async def cleanup_autodeployed_model_resources(db, user, model_id: str, model_name: str):
     model_crud = ItemCrud(model=Model)
     model_crud.update(
         db=db,

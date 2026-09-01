@@ -24,11 +24,14 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from sse_starlette import EventSourceResponse
 from terrakit import DataConnector
 from terrakit.download.geodata_utils import list_data_connectors
+
+from gfmstudio.groups.models import ArtifactType
+from gfmstudio.groups.visibility import build_visibility_filter
 
 from gfmstudio.amo.schemas import OnboardModelRequest
 from gfmstudio.auth.authorizer import auth_handler
@@ -246,14 +249,19 @@ async def list_models(
     search_filters = {}
     if internal_name:
         search_filters["internal_name"] = internal_name
+    
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(Model, user, ArtifactType.model, db)
+    
     count, items = model_crud.get_all(
         db=db,
         limit=limit,
         skip=skip,
         search=search_filters,
         user=user,
-        shared=True,
         filters=filters,
+        filter_expr=visibility_filter,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -270,7 +278,9 @@ async def get_model(
     auth=Depends(auth_handler),
 ):
     user = auth[0]
-    item = model_crud.get_by_id(db, model_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(Model, user, ArtifactType.model, db)
+    item = db.query(Model).filter(and_(Model.id == model_id, visibility_filter)).first()
     if not item:
         raise HTTPException(status_code=404, detail="Model not found")
 
@@ -532,7 +542,6 @@ async def list_inferences(
 ):
     user = auth[0]
     filters = {}
-    filter_expr = None
     filter_expr_list = []
     if location:
         filters["location"] = location
@@ -546,8 +555,12 @@ async def list_inferences(
         filter_expr_list.append(
             Inference.inference_config["fine_tuning_id"].astext == str(tune_id).lower()
         )
-    if filter_expr_list:
-        filter_expr = and_(*filter_expr_list)
+    
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(Inference, user, ArtifactType.inference_run, db)
+    filter_expr_list.append(visibility_filter)
+    
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
 
     count, items = inference_crud.get_all(
         db=db,
@@ -556,6 +569,7 @@ async def list_inferences(
         user=user,
         filters=filters,
         filter_expr=filter_expr,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -572,7 +586,9 @@ async def retrieve_inference(
     auth=Depends(auth_handler),
 ):
     user = auth[0]
-    item = inference_crud.get_by_id(db, inference_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(Inference, user, ArtifactType.inference_run, db)
+    item = db.query(Inference).filter(and_(Inference.id == inference_id, visibility_filter)).first()
     if not item:
         raise HTTPException(status_code=404, detail="Inference not found")
 
@@ -694,7 +710,7 @@ async def create_generic_processor(
         aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
-        verify=(settings.ENVIRONMENT.lower() != "local"),
+        verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
     )
     generic_processor_cos_path = (
         f"{str(created_generic_processor.id)}/{generic_processor_file.filename}"
@@ -780,7 +796,7 @@ async def retrieve_generic_processor(
         aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
-        verify=(settings.ENVIRONMENT.lower() != "local"),
+        verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
     )
 
     try:
@@ -895,7 +911,24 @@ async def get_task_step_logs(
     db: Session = Depends(utils.get_db),
     auth=Depends(auth_handler),
     cos_client=Depends(get_cos_client),
+    allow_incomplete: bool = True,
+    tail_lines: Optional[int] = None,
+    force_refresh: bool = False,
 ):
+    """
+    Get task step logs by reading from local file system, uploading to COS,
+    and returning a presigned URL.
+
+    Args:
+        task_id: Task identifier
+        step_id: Step identifier
+        allow_incomplete: Allow access to logs for running tasks
+        tail_lines: Number of lines to read from end (None = all lines)
+        force_refresh: Force reading from local file even if COS version exists
+
+    Returns:
+        Response with presigned URL and metadata
+    """
     user = auth[0]
     task = task_crud.get_all(db, filters={"task_id": task_id}, user=user)
     if not task:
@@ -909,24 +942,81 @@ async def get_task_step_logs(
             status_code=404, detail={"msg": f"Step {step_id} not found in task"}
         )
 
-    if filtered_step[0].get("status") not in ["FINISHED", "FAILED", "ERROR"]:
-        raise HTTPException(
-            status_code=409,
-            detail={"msg": f"Step {step_id} is not completed. Logs are not available."},
-        )
+    step_status = filtered_step[0].get("status")
+
+    completed_statuses = ["FINISHED", "FAILED", "STOPPED"]
+    running_statuses = ["RUNNING", "READY"]
+
+    is_completed = step_status in completed_statuses
+    is_running = step_status in running_statuses
+
+    if step_status and not (is_completed or is_running):
+        if allow_incomplete:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "msg": f"Step {step_id} has status '{step_status}'. Logs may not be available yet.",
+                    "status": step_status,
+                },
+            )
 
     inference_id = task_id.split("-task")[0]
     object_key = f"{inference_id}/{task_id}/{task_id}-{step_id}-stdout.log"
+
+    logs_base_path = settings.INFERENCE_LOGS_BASE_PATH
+    local_log_path = (
+        f"{logs_base_path}/{inference_id}/{task_id}/{task_id}-{step_id}-stdout.log"
+    )
+
+    should_read_local = force_refresh or is_running
+
+    log_content = ""
+
     try:
+        if should_read_local:
+            os.sync()
+
+            log_lines, total_lines = helpers.read_log_file_tail(
+                local_log_path, tail_lines
+            )
+            log_content = "".join(log_lines)
+        try:
+            cos_client.head_object(Bucket=pipelines_bucket_name, Key=object_key)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                if allow_incomplete and not log_content:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={
+                            "msg": f"Log file not found for step {step_id}. Task may still be initializing.",
+                            "status": step_status,
+                            "local_path_checked": local_log_path,
+                        },
+                    )
+            else:
+                raise
+
         url = cos_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": pipelines_bucket_name, "Key": object_key},
             ExpiresIn=302400,
         )
+
+        return {
+            "task_id": task_id,
+            "step_id": step_id,
+            "step_log_url": url,
+            "status": step_status,
+            "warning": (
+                "Logs are incomplete - task is still running" if is_running else None
+            ),
+        }
+
     except ClientError as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-    return {"task_id": task_id, "step_id": step_id, "step_log_url": url}
+    except Exception as e:
+        logger.error(f"Error processing logs for task {task_id}, step {step_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing logs: {str(e)}")
 
 
 # ***************************************************
@@ -1253,7 +1343,7 @@ async def get_fileshare_presigned_urls(
         aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
         endpoint_url=settings.OBJECT_STORAGE_ENDPOINT,
         config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
-        verify=(settings.ENVIRONMENT.lower() != "local"),
+        verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
     )
     try:
         upload_url = generate_upload_presigned_url(

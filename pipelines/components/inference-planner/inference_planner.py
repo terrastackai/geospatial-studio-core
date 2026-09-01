@@ -236,7 +236,19 @@ def inference_planner():
                     {"status": "WAITING", "process_id": "push-to-geoserver", "step_number": 3},
                 ]
 
-        insert_task_sql = f"""INSERT INTO {inf_task_table}(task_id, status, active, pipeline_steps, inference_id, inference_folder, created_by) VALUES """
+        # Determine priority based on total task count
+        # Priority scale: 1 (highest) to 10 (lowest)
+        total_tasks = len(tasks)
+        if total_tasks <= 5:
+            priority = 4  # High priority for small inferences
+        elif total_tasks <= 15:
+            priority = 5  # Medium priority for moderate inferences
+        else:
+            priority = 6  # Lower priority for large inferences
+        
+        logger.info(f"Setting priority to {priority} for inference with {total_tasks} tasks")
+
+        insert_task_sql = f"""INSERT INTO {inf_task_table}(task_id, status, active, pipeline_steps, inference_id, inference_folder, created_by, priority) VALUES """
         gdf["geometry"] = gpd.GeoSeries.from_wkt(gdf["geometry"])
         gdf = gdf.set_geometry("geometry", crs="EPSG:4326")
         gdf.to_file(f"{inference_folder}/{inference_id}_tasks.geojson", driver="GeoJSON")
@@ -254,7 +266,7 @@ def inference_planner():
 
             insert_task_sql = (
                 insert_task_sql
-                + f"('{t['task_id']}', 'READY', 'True', '{json.dumps(pipeline_steps)}', '{inference_id}', '{inference_folder}', '{inference_dict['user']}')"
+                + f"('{t['task_id']}', 'READY', 'True', '{json.dumps(pipeline_steps)}', '{inference_id}', '{inference_folder}', '{inference_dict['user']}', '{priority}')"
             )
 
         insert_task_sql = insert_task_sql + ";"

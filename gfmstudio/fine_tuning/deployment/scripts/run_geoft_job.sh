@@ -41,7 +41,7 @@ export TUNE_ID=$4
 export FT_WEBHOOKS_ID=$6
 export FT_WEBHOOKS_URL=$7
 export FTUNING_RUNTIME_IMAGE=$8
-export IMAGE_PULL_SECRET=${9:-ris-private-registry}
+export IMAGE_PULL_SECRET=${9}
 export RESOURCE_LIMIT_CPU=${10:-10}
 export RESOURCE_LIMIT_Memory=${11:-32}
 export RESOURCE_LIMIT_GPU=${12:-1}
@@ -49,7 +49,15 @@ export RESOURCE_REQUEST_CPU=${13:-6}
 export RESOURCE_REQUEST_Memory=${14:-24}
 export RESOURCE_REQUEST_GPU=${15:-1}
 export RUN_TERRATORCH_TEST=${16}
-export NODE_AFFINITY=${17}
+export APPEND_SECURITY_CONTEXT=${17:-false}
+export SECURITY_CONTEXT_FSGROUP=${18:-2000}
+export HF_HOME=${19}
+export TRANSFORMERS_CACHE=${20}
+export HF_HUB_OFFLINE=${21}
+export TRANSFORMERS_OFFLINE=${22}
+export IMAGE_PULL_POLICY=${23:-Always}
+export FTUNING_INIT_CONTAINER_IMAGE=${24:-busybox}
+export NODE_AFFINITY=${25} # If adding new variables, add above this one; make sure this one is always last
 
 # Replace the variable and properly indent the content
 sed '/\${TUNING_CONFIG_YAML}/{
@@ -61,6 +69,19 @@ EOF
 
 envsubst < "/tmp/$output_manifest_yaml" > "/tmp/${output_manifest_yaml}.tmp" \
     && mv "/tmp/${output_manifest_yaml}.tmp" "/tmp/$output_manifest_yaml"
+
+# Remove imagePullSecrets section if IMAGE_PULL_SECRET is empty
+if [ -z "$IMAGE_PULL_SECRET" ]; then
+    echo "IMAGE_PULL_SECRET is empty, removing imagePullSecrets from manifest"
+    # Remove the imagePullSecrets section (handles both single-line and multi-line formats)
+    sed -i '/imagePullSecrets:/,/^[^ ]/{ /imagePullSecrets:/d; /- name:/d; /^[^ ]/!d; }' "/tmp/$output_manifest_yaml"
+fi
+
+# Add security context if APPEND_SECURITY_CONTEXT is true
+if [ "$APPEND_SECURITY_CONTEXT" = "true" ] || [ "$APPEND_SECURITY_CONTEXT" = "True" ]; then
+    echo "Adding pod security context with fsGroup: $SECURITY_CONTEXT_FSGROUP"
+    sed -i '/serviceAccountName: api-gateway-sa/a\      securityContext:\n        fsGroup: '"$SECURITY_CONTEXT_FSGROUP"'\n        fsGroupChangePolicy: "OnRootMismatch"' "/tmp/$output_manifest_yaml"
+fi
 
 # kubectl apply --dry-run=client -f "/tmp/$output_manifest_yaml"
 kubectl apply -f "/tmp/$output_manifest_yaml"

@@ -26,7 +26,7 @@ def init_cos_client(app: FastAPI = None):
             aws_secret_access_key=settings.OBJECT_STORAGE_SEC_KEY,
             config=Config(signature_version=settings.OBJECT_STORAGE_SIGNATURE_VERSION),
             region_name=settings.OBJECT_STORAGE_REGION,
-            verify=(settings.ENVIRONMENT.lower() != "local"),
+            verify=(settings.ENVIRONMENT.lower() not in ["local", "crc"]),
         )
         if app:
             app.state.cos_client = cos_client

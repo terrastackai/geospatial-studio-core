@@ -62,6 +62,8 @@ RUN mkdir /pipeline
 COPY ./general_libraries/gfm_logger /pipeline/gfm_logger
 COPY ./general_libraries/gfm_data_processing /pipeline/gfm_data_processing
 COPY ./general_libraries/orchestrate_wrapper /pipeline/
+COPY ./general_libraries/terrakit_cache /pipeline/terrakit_cache
+
 
 ########## Adding specific processor scripts
 # inference planner
@@ -99,8 +101,8 @@ RUN mkdir /pipeline/data \
 && mkdir /.docker && chmod -R 777 /.docker \
 && mkdir /.local && chmod -R 777 /.local \
 && mkdir /.cache && chmod -R 777 /.cache \
-&& chown -R 10001:10001 /pipeline/ \
-&& chmod -R 777 /pipeline/
+&& chown -R 10001:10001 /pipeline/ /pipeline/data \
+&& chmod -R 777 /pipeline/ /pipeline/data
 
 COPY ./components/terrakit_data_fetch/sentinelhub_config.toml /.config/sentinelhub/config.toml
 RUN chmod -R 777 /.config/sentinelhub/

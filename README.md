@@ -309,9 +309,19 @@ black gfmstudio/ tests/
 
 ---
 
+## ⚙️ Configuration
+
+### Rate Limiting
+
+GEOStudio Core includes configurable rate limiting to protect against abuse. See [Rate Limiting Configuration](docs/RATE_LIMITING.md) for details on:
+- Default rate limits per endpoint
+- Environment variables to enable/disable and adjust limits
+
+---
+
 ## 🔌🧩 Using Generic Python Processors
 
-See this [ReadMe](docs/README-generic-processors-guide.md)  for more detailed information. 
+See this [Generic Processors Guide](docs/README-generic-processors-guide.md)  for more detailed information.
 
 ## 🤝 Contributing
 

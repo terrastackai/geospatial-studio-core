@@ -4,6 +4,7 @@
 
 """Helper functions for tune submission and management."""
 
+import asyncio
 import base64
 import logging
 import os
@@ -12,7 +13,6 @@ import string
 from typing import Any, Dict, Optional, Tuple
 
 import yaml
-from asyncer import asyncify
 from fastapi import HTTPException
 from jinja2 import BaseLoader, Environment, runtime
 from sqlalchemy.orm import Session
@@ -21,8 +21,11 @@ from gfmstudio.celery_worker import deploy_tuning_job_celery_task
 from gfmstudio.common.api import crud
 from gfmstudio.config import settings
 from gfmstudio.fine_tuning import schemas
-from gfmstudio.fine_tuning.core import object_storage, tunes
-from gfmstudio.fine_tuning.core.kubernetes import deploy_tuning_job
+from gfmstudio.fine_tuning.core import tunes
+from gfmstudio.fine_tuning.core.kubernetes import (
+    check_tuning_task_status,
+    deploy_tuning_job,
+)
 from gfmstudio.fine_tuning.core.schema import TuneTemplateParameters
 from gfmstudio.fine_tuning.core.tuning_config_utils import (
     convert_to_jinja2_compatible_braces,
@@ -39,6 +42,9 @@ from gfmstudio.fine_tuning.core.tuning_config_utils import (
 )
 from gfmstudio.fine_tuning.models import BaseModels, GeoDataset, Tunes, TuneTemplate
 from gfmstudio.fine_tuning.utils.geoserver_handlers import convert_to_geoserver_sld
+
+tune_crud = crud.ItemCrud(model=Tunes)
+from gfmstudio.common.api import crud
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +211,7 @@ async def get_rendered_tuning_template(
 
                 return model_configs_obj, rendered_tune_template
             else:
-                msg = f"{backbone_model_name} modalities expected to be one of: {terramind_supported_modalities}"
+                msg = f"{backbone_model_name} modalities {image_modality} expected to be one of: {terramind_supported_modalities}"
                 raise HTTPException(
                     status_code=422,
                     detail={msg: msg},
@@ -655,23 +661,6 @@ async def save_tune_config(
     HTTPException
         500 if COS upload fails
     """
-    # Upload to COS if not local environment
-    if settings.ENVIRONMENT.lower() != "local":
-        s3 = object_storage.object_storage_client()
-        try:
-            await asyncify(s3.put_object)(
-                Bucket=settings.TUNES_FILES_BUCKET,
-                Body=rendered_template,
-                Key=bucket_key,
-            )
-            logger.debug(
-                f"Config uploaded to COS: {settings.TUNES_FILES_BUCKET}/{bucket_key}"
-            )
-        except Exception as exc:
-            logger.exception("Failed to upload config to COS")
-            raise HTTPException(
-                status_code=500, detail="Failed to upload configuration to storage"
-            ) from exc
 
     # Save to local storage
     tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
@@ -714,6 +703,9 @@ def get_runtime_image(data_in: schemas.TuneSubmitIn, created_tune) -> str:
         runtime_image = created_tune.tune_template.extra_info.get("runtime_image")
 
     if not runtime_image:
+        runtime_image = settings.FTUNING_RUNTIME_IMAGE
+
+    if not runtime_image:
         raise HTTPException(
             status_code=422,
             detail="Task must be configured with a valid runtime image",
@@ -749,8 +741,7 @@ async def submit_tune_job(
 
     try:
         if settings.CELERY_TASKS_ENABLED:
-            # Submit via Celery
-            deploy_tuning_job_celery_task.apply_async(
+            result = deploy_tuning_job_celery_task.apply_async(
                 kwargs={
                     "ftune_id": tune_id,
                     "ftune_config_file": config_path,
@@ -759,17 +750,41 @@ async def submit_tune_job(
                 },
                 task_id=tune_id,
             )
-            ftune_job_id = f"kjob-{tune_id}".lower()
-            status = "In_progress"
+
+            try:
+                job_result = await asyncio.to_thread(result.get, timeout=5)
+                ftune_job_id, job_status = job_result
+
+                if job_status == "Error":
+                    status = "Failed"
+                else:
+                    ftune_job_id = f"kjob-{tune_id}".lower()
+                    status = "Pending"
+            except Exception as e:
+                logger.debug(f"{tune_id}: Job creation in progress: {e}")
+                ftune_job_id = f"kjob-{tune_id}".lower()
+                status = "Pending"
         else:
-            # Submit directly
             ftune_job_id, updated_status = await deploy_tuning_job(
                 ftune_id=tune_id,
                 ftune_config_file=config_path,
                 ftuning_runtime_image=runtime_image,
                 tune_type=schemas.TuneOptionEnum.K8_JOB,
             )
-            status = updated_status or "Submitted"
+
+            if updated_status == "Error":
+                status = "Failed"
+            elif updated_status == "In_progress":
+                k8s_status, _ = await check_tuning_task_status(tune_id)
+
+                if k8s_status == "Running":
+                    status = "In_progress"
+                elif k8s_status == "Pending":
+                    status = "Pending"
+                else:
+                    status = updated_status
+            else:
+                status = updated_status or "Submitted"
 
         logger.info(f"Tune job {ftune_job_id} submitted with status: {status}")
 

@@ -154,14 +154,20 @@ except requests.exceptions.RequestException as e:
 
 #### Python Processor Template
 
-Your Python processor should be a standalone script that will be executed by the pipeline as `python script.py`. This script is expected to have a `__main__` entrypoint. The pipeline will pass arguments and parameters to your script.
+Your Python processor should be a standalone script that will be executed by the pipeline as `python script.py`. 
+
+This script is expected to have a `__main__` entrypoint. 
+
+The script is also expected to accept an `--input` and `--output` argument that has the path to the input image and the output folder to save the output image.
+
+ The pipeline will pass arguments and parameters to your script.
 
 ```python
 """
 Generic Python Processor for Custom Data Processing
 
 This script will be executed by the inference pipeline with command-line arguments.
-The pipeline passes input_path, output_path, and processor parameters.
+The pipeline passes input, output, and processor parameters.
 """
 
 import sys
@@ -211,17 +217,17 @@ def apply_processing(data: np.ndarray, threshold: int, method: str = 'default') 
     return processed
 
 
-def main(input_path: str, output_path: str, parameters: Dict[str, Any]):
+def main(input: str, output: str, parameters: Dict[str, Any]):
     """
     Main processing function.
     
     Args:
-        input_path: Path to input raster file (model output)
-        output_path: Path where processed output should be saved
+        input: Path to input raster file (model output)
+        output: Path where processed output should be saved
         parameters: Dictionary of processor parameters from the API
     """
     try:
-        logger.info(f"Processing {input_path}")
+        logger.info(f"Processing {input}")
         logger.info(f"Parameters: {parameters}")
         
         # Get parameters
@@ -242,16 +248,16 @@ def main(input_path: str, output_path: str, parameters: Dict[str, Any]):
         logger.info(f"Output shape: {processed_data.shape}")
         
         # Write output
-        with rasterio.open(output_path, 'w', **profile) as dst:
+        with rasterio.open(output, 'w', **profile) as dst:
             dst.write(processed_data)
         
-        logger.info(f"Successfully processed and saved to {output_path}")
+        logger.info(f"Successfully processed and saved to {output}")
         
         # Return success status
         result = {
             "status": "success",
             "message": f"Processing completed with threshold {threshold}",
-            "output_path": output_path,
+            "output": output,
             "input_shape": list(data.shape),
             "output_shape": list(processed_data.shape)
         }
@@ -277,15 +283,15 @@ if __name__ == "__main__":
     """
     Entry point when script is executed.
     The pipeline will call this script with arguments:
-    python script.py <input_path> <output_path> <parameters_json>
+    python script.py --input <input> --output <output> <your_specific_parameters_values>
     """
     
     if len(sys.argv) < 4:
-        logger.error("Usage: python script.py <input_path> <output_path> <parameters_json>")
+        logger.error("Usage: python script.py --input <input> --output <output> <your_specific_parameters_values>")
         sys.exit(1)
     
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
+    input = sys.argv[1]
+    output = sys.argv[2]
     parameters_json = sys.argv[3]
     
     # Parse parameters
@@ -296,13 +302,13 @@ if __name__ == "__main__":
         parameters = {}
     
     # Run main processing
-    exit_code = main(input_path, output_path, parameters)
+    exit_code = main(input, output, parameters)
     sys.exit(exit_code)
 ```
 
 **Key Points:**
 - The processor is a standalone Python script executed as `python script.py`
-- The script receives arbitrary arguments via command line: e.g `input_path`, `output_path`, `threshold` ... 
+- The script receives arbitrary arguments via command line: e.g `input`, `output`, `threshold` ... 
 - Include `if __name__ == "__main__":` block as the entry point
 - Parse parameters from JSON string passed as argument
 - Use proper error handling and logging
@@ -898,6 +904,7 @@ else:
   - Validate metadata JSON
   - API key permissions
   - Too large file size. (Timeout)
+  - Your code has no way to accept the --input and --output parameters.
 
 
 ### Generic Processor Not Executing
@@ -910,6 +917,7 @@ else:
 - Ensure processor file is valid Python file
 - Review processor logs for errors
 - Ensure that the python file has an entrypoint `__main__`
+- Add an --input and --output parameter to the python file
 
 ---
 

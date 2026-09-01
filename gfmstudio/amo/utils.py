@@ -130,7 +130,7 @@ async def invoke_load_model_artifacts(
         "spec": {
             "template": {
                 "spec": {
-                    "imagePullSecrets": [{"name": f"{settings.FT_IMAGE_PULL_SECRETS}"}],
+                    **({"imagePullSecrets": [{"name": f"{settings.FT_IMAGE_PULL_SECRETS}"}]} if settings.FT_IMAGE_PULL_SECRETS else {}),
                     "containers": [
                         {
                             "name": "downloader",

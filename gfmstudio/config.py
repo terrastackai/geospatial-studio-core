@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     PIPELINES_V2_INTEGRATION_TYPE: Optional[str] = Field(
         default="database"
     )  # Options: database, kafka, api
+    INFERENCE_LOGS_BASE_PATH: Optional[str] = Field(default="/data")
 
     DEFAULT_SYSTEM_USER: Optional[str] = "system@ibm.com"
     AUTH_ENABLED: bool = Field(
@@ -88,11 +89,18 @@ class Settings(BaseSettings):
     DATA_ADVISOR_PRE_DAYS: Optional[int] = Field(default=1)
     DATA_ADVISOR_POST_DAYS: Optional[int] = Field(default=1)
 
+    # Inference Area Validation
+    MAX_INFERENCE_AREA_SQ_KM: Optional[float] = Field(
+        default=None,
+        description="Maximum allowed inference area in square kilometers. "
+        "Example: 72546.0. Set to 0 or None to disable validation.",
+    )
+
     # API Key Encryption
     API_ENCRYPTION_KEY: str = Field(default=SENTINEL_SECRET_VALUE)
 
     # Rate Limiting
-    RATELIMIT_ENABLED: Optional[bool] = False  # Turn rate limit on/off
+    RATELIMIT_ENABLED: Optional[bool] = True  # Turn rate limit on/off
     RATE_LIMIT_CONFIG: Optional[dict] = {}
     RATELIMIT_LIMIT: Optional[int] = Field(
         default=200,
@@ -171,6 +179,57 @@ class Settings(BaseSettings):
     BACKBONE_MODELS_MOUNT: str = Field(
         description="Path in the pod where the backbone models PVC is mounted",
         default="/terratorch/",
+    )
+    HF_HOME: str = Field(
+        description="Directory for HuggingFace cache inside the fine-tuning pod.",
+        default="/terratorch/gfm_models",
+    )
+    TRANSFORMERS_CACHE: str = Field(
+        description="Directory for Transformers model cache inside the fine-tuning pod.",
+        default="/terratorch/gfm_models",
+    )
+    HF_HUB_OFFLINE: str = Field(
+        description=(
+            "Set to '1' to block all outbound HuggingFace Hub calls in the "
+            "fine-tuning pod (air-gapped mode). Leave empty (default) to use "
+            "the traditional HuggingFace download path."
+        ),
+        default="",
+    )
+    TRANSFORMERS_OFFLINE: str = Field(
+        description=(
+            "Set to '1' to run transformers in offline mode inside the "
+            "fine-tuning pod. Leave empty (default) for normal online mode."
+        ),
+        default="",
+    )
+    IMAGE_PULL_POLICY: str = Field(
+        description=(
+            "imagePullPolicy for all studio job containers (fine-tuning, HPO, "
+            "and dataset onboarding). Defaults to 'Always' for online "
+            "deployments. Set to 'IfNotPresent' when GEOSTUDIO_OFFLINE=true so "
+            "pods use the image already present on the node rather than "
+            "attempting an outbound registry pull."
+        ),
+        default="Always",
+    )
+    FTUNING_RUNTIME_IMAGE: Optional[str] = Field(
+        description=(
+            "Default fine-tuning runtime image (terratorch) used when the "
+            "tune template and the request payload do not specify one. "
+            "Set this to pin a cluster-wide default image so operators do not "
+            "need to embed the image in every tune template."
+        ),
+        default=None,
+    )
+    FTUNING_INIT_CONTAINER_IMAGE: str = Field(
+        description=(
+            "Image used for the initContainer that copies the training config "
+            "into the shared PVC before the fine-tuning runtime starts. "
+            "Defaults to 'busybox'. Override to use a mirrored or air-gapped "
+            "equivalent when the public Docker Hub registry is not reachable."
+        ),
+        default="busybox",
     )
     FILES_PVC: Optional[str] = Field(
         description="Name of the Persistent Volume ", default="gfm-ft-files-pvc"
@@ -261,6 +320,13 @@ class Settings(BaseSettings):
         description="Cut-off data after which terratorch v2 should be in use",
     )
 
+    # Job Status Configuration - stored as comma-separated strings
+    K8S_JOB_SUCCESS_STATUSES: str = Field(
+        default="Complete,Succeeded,SuccessCriteriaMet"
+    )
+
+    K8S_JOB_FAILURE_STATUSES: str = Field(default="Failed,Error,FailureTarget")
+
     ####################
     # DATASET FACTORY
     ####################
@@ -280,6 +346,8 @@ class Settings(BaseSettings):
     model_config = ConfigDict(
         extra="allow", case_sensitive=True, env_file=os.path.join(BASE_DIR, ".env")
     )
+    APPEND_SECURITY_CONTEXT: Optional[str] = Field(default="false")
+    SECURITY_CONTEXT_FSGROUP: Optional[str] = Field(default="1000")
 
     ####################
     # AMO

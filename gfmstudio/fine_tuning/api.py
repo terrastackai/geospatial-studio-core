@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, Union
 
@@ -40,6 +41,7 @@ from gfmstudio.config import BASE_DIR, settings
 from gfmstudio.fine_tuning import schemas
 from gfmstudio.fine_tuning.core import object_storage
 from gfmstudio.fine_tuning.core.iterate_utils import update_terratorch_iterate_config
+from gfmstudio.fine_tuning.core.kubernetes import collect_pod_logs
 from gfmstudio.fine_tuning.core.mlflow_logs import get_mlflow_metrics
 from gfmstudio.fine_tuning.core.tuning_config_utils import (
     get_dataset_params,
@@ -55,6 +57,7 @@ from gfmstudio.fine_tuning.dataset_schemas import (
 from gfmstudio.fine_tuning.models import BaseModels, GeoDataset, Tunes, TuneTemplate
 from gfmstudio.fine_tuning.utils import tune_handlers
 from gfmstudio.fine_tuning.utils.dataset_handlers import (
+    capture_and_upload_job_log,
     data_and_label_match,
     extract_bands_from,
     list_zipped_files,
@@ -64,6 +67,9 @@ from gfmstudio.fine_tuning.utils.dataset_handlers import (
     validate_and_transform_options,
 )
 from gfmstudio.fine_tuning.utils.tune_handlers import get_rendered_tuning_template
+from gfmstudio.fine_tuning.utils.webhook_event_handlers import upload_logs_cos
+from gfmstudio.groups.models import ArtifactType
+from gfmstudio.groups.visibility import build_visibility_filter
 from gfmstudio.inference.v2.models import Inference
 from gfmstudio.inference.v2.models import Model as InferenceModel
 from gfmstudio.inference.v2.schemas import InferenceCreateInput, InferenceGetResponse
@@ -105,20 +111,6 @@ tune_template_crud = crud.ItemCrud(model=TuneTemplate)
 dataset_crud = crud.ItemCrud(model=GeoDataset)
 inference_crud = crud.ItemCrud(model=Inference)
 inference_model_crud = crud.ItemCrud(model=InferenceModel)
-
-"""
-Create file folders if they don't exist already
-"""
-if settings.ENVIRONMENT.lower() == "local":
-    tasks_dir = os.path.join(settings.TUNE_BASEDIR, "tune-tasks")
-    if os.path.isdir(tasks_dir) is False:
-        logger.info(f"Creating tasks directory: {tasks_dir}")
-        os.makedirs(tasks_dir)
-
-    trained_dir = os.path.join(settings.TUNE_BASEDIR, "pre-trained")
-    if os.path.isdir(trained_dir) is False:
-        logger.info(f"Creating pre-trained directory: {trained_dir}")
-        os.makedirs(trained_dir)
 
 
 ###############################################
@@ -416,26 +408,25 @@ async def list_tunes(
     user = auth[0]
     qp_filters = {}
     search_filters = {}
-    ignore_user_check = False
+    filter_expr = None
     if name:
         search_filters["name"] = name
     if status:
         qp_filters["status"] = status
-    if shared is not None:
-        # TODO: Add logic to mark tunes as sharable and update this filter
-        # we currently assume that for a tune to be shared it was
-        # created_by the system user.
-        qp_filters["created_by"] = settings.DEFAULT_SYSTEM_USER if shared else user
-        ignore_user_check = True
+
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(Tunes, user, ArtifactType.tune, db)
+    filter_expr = visibility_filter
 
     count, items = tunes_crud.get_all(
         db=db,
         filters=qp_filters,
         search=search_filters,
+        filter_expr=filter_expr,
         limit=limit,
         skip=skip,
         user=user,
-        ignore_user_check=ignore_user_check,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -477,17 +468,30 @@ async def retrieve_tune(
         404: Tune not Found
     """
     user = auth[0]
-    item = tunes_crud.get_by_id(db=db, item_id=tune_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(Tunes, user, ArtifactType.tune, db)
+    item = db.query(Tunes).filter(and_(Tunes.id == tune_id, visibility_filter)).first()
     if not item:
         raise HTTPException(status_code=404, detail="Tune not found")
+
+    updated_dict = item.__dict__
+
+    if item.status == "In_progress":
+        logs = await collect_pod_logs(tune_id=tune_id)
+        if logs:
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            full_s3_log_file_path = f"ftlogs/{current_date}/{tune_id}.log"
+            await upload_logs_cos(logs, full_s3_log_file_path)
+            updated_dict["logs"] = full_s3_log_file_path
+
     # create pre-signed url for the logs
-    if item.status == "Failed" and item.logs:
+    if updated_dict["logs"]:
         s3 = object_storage.object_storage_client()
 
         try:
             logs_pre_signed_url = grab_tune_file_presigned_url(
                 bucket_name=settings.TUNES_FILES_BUCKET,
-                file_key=item.logs,
+                file_key=updated_dict["logs"],
                 s3=s3,
                 file_type="logs",
             )
@@ -505,8 +509,6 @@ async def retrieve_tune(
                     file_type="tuning config",
                 )
 
-            updated_dict = item.__dict__
-
             updated_dict["logs_presigned_url"] = logs_pre_signed_url
             updated_dict["tuning_config_presigned_url"] = tuning_config_presigned_url
 
@@ -517,7 +519,7 @@ async def retrieve_tune(
                 f"{tune_id} Error generating presigned url for {item.logs}"
             )
 
-    return item
+    return updated_dict
 
 
 @app.patch("/tunes/{tune_id}", tags=["FineTuning / Tunes"])
@@ -983,7 +985,7 @@ async def submit_hpo_tune_yaml(
         bucket_key = f"tune-tasks/{tune_id}/{tune_id}_config.yaml"
         tune_dir = os.path.join(settings.TUNE_BASEDIR, f"tune-tasks/{tune_id}")
         if os.path.isdir(tune_dir) is False:
-            os.mkdir(tune_dir)
+            os.makedirs(tune_dir, exist_ok=True)
 
         bucket_dir = os.path.join(settings.TUNE_BASEDIR, bucket_key)
         config_data = yaml.load(config_content, Loader=yaml.SafeLoader)
@@ -1153,7 +1155,7 @@ async def try_tuned_model(
     )
 
     # Update the tune with user updated train options.
-    if user == tune_meta.created_by:
+    if user.lower() == tune_meta.created_by.lower():
         tunes_crud.update(
             db=db,
             item_id=str(tune_id),
@@ -1349,9 +1351,7 @@ async def get_bases(
     user = auth[0]
     qp_filters = {}
     search_filters = {}
-    filter_expr = None
     filter_expr_list = []
-    ignore_user_check = False
     if name:
         search_filters["name"] = name
     if status:
@@ -1361,14 +1361,14 @@ async def get_bases(
             BaseModels.model_params["model_category"].astext
             == str(model_category).lower()
         )
-    if shared is not None:
-        # TODO: Add logic to mark tunes as sharable and update this filter
-        # we currently assume that for a tune to be shared it was
-        # created_by the system user.
-        qp_filters["created_by"] = settings.DEFAULT_SYSTEM_USER if shared else user
-        ignore_user_check = True
-    if filter_expr_list:
-        filter_expr = and_(*filter_expr_list)
+
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
+    filter_expr_list.append(visibility_filter)
+
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = bases_crud.get_all(
         db=db,
         filters=qp_filters,
@@ -1377,7 +1377,7 @@ async def get_bases(
         limit=limit,
         skip=skip,
         user=user,
-        ignore_user_check=ignore_user_check,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -1448,7 +1448,15 @@ async def get_base_by_id(
         404: Base model not found
     """
     user = auth[0]
-    data = bases_crud.get_by_id(db=db, item_id=base_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        BaseModels, user, ArtifactType.backbone, db
+    )
+    data = (
+        db.query(BaseModels)
+        .filter(and_(BaseModels.id == base_id, visibility_filter))
+        .first()
+    )
     if not data:
         raise HTTPException(404, detail=f"Base Model {base_id} not found")
 
@@ -1556,17 +1564,24 @@ async def list_tune_templates(
     user = auth[0]
     qp_filters = {}
     search_filters = {}
-    filter_expr = None
+    filter_expr_list = []
     if name:
         search_filters["name"] = name
     if model_category:
-        filter_expr = (
+        filter_expr_list.append(
             TuneTemplate.extra_info["model_category"].astext
             == str(model_category).lower()
         )
     if purpose:
         qp_filters["purpose"] = purpose
 
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    filter_expr_list.append(visibility_filter)
+
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = tune_template_crud.get_all(
         db=db,
         filters=qp_filters,
@@ -1575,6 +1590,7 @@ async def list_tune_templates(
         limit=limit,
         skip=skip,
         user=user,
+        ignore_user_check=True,
         total_count=True,
     )
     return {"results": items, "total_records": count}
@@ -1668,7 +1684,15 @@ async def retrieve_task(
         404: Task not found
     """
     user = auth[0]
-    task = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1706,7 +1730,15 @@ async def get_task_content_template(
         404: Task not found
     """
     user = auth[0]
-    data = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    data = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not data:
         raise HTTPException(404, detail=f"Task {task_id} not found")
     content = base64.b64decode(data.content or "")
@@ -1751,7 +1783,15 @@ async def update_task_schema(
         412: Validation Error: Other validation errors
     """
     user = auth[0]
-    task = tune_template_crud.get_by_id(db=db, item_id=task_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        TuneTemplate, user, ArtifactType.task_template, db
+    )
+    task = (
+        db.query(TuneTemplate)
+        .filter(and_(TuneTemplate.id == task_id, visibility_filter))
+        .first()
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1980,19 +2020,26 @@ async def list_datasets(
 ):
     user = auth[0]
     filter_fields = {"version": "v2"}
-    filter_expr = None
+    filter_expr_list = []
     search_filters = {}
     if dataset_name:
         search_filters["dataset_name"] = dataset_name
     if purpose:
-        filter_expr = GeoDataset.purpose.in_(purpose)
+        filter_expr_list.append(GeoDataset.purpose.in_(purpose))
     if status:
         filter_fields["status"] = status
 
+    # Apply group-based visibility filter
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
+    filter_expr_list.append(visibility_filter)
+
+    filter_expr = and_(*filter_expr_list) if filter_expr_list else None
     count, items = dataset_crud.get_all(
         db,
         user=user,
-        ignore_user_check=False,
+        ignore_user_check=True,
         limit=limit,
         skip=skip,
         filters=filter_fields,
@@ -2304,7 +2351,8 @@ async def onboard_dataset(
         f"'s|dataset-id|{created_item.id}|g; "
         f"s|DATA_PVC_NAME|{settings.DATA_PVC}|g; "
         f"s|DATASET_PIPELINE_IMAGE|{settings.DATASET_PIPELINE_IMAGE}|g; "
-        f"s|IMAGE_PULL_SECRET|{settings.FT_IMAGE_PULL_SECRETS}|g' "
+        f"s|IMAGE_PULL_SECRET|{settings.FT_IMAGE_PULL_SECRETS}|g; "
+        f"s|FTUNING_IMAGE_PULL_POLICY|{settings.IMAGE_PULL_POLICY}|g' "
         f"{kjob_tpl}"
     )
 
@@ -2370,6 +2418,26 @@ async def onboard_dataset(
             create_job_deployment_file_command, shell=True
         )
         logger.info("Job deployment file created " + str(create_deployment_file_output))
+
+        # Add security context for job deployments
+        if (
+            settings.APPEND_SECURITY_CONTEXT
+            and settings.APPEND_SECURITY_CONTEXT.lower() == "true"
+        ):
+            add_security_context_command = (
+                f"sed -i '/serviceAccountName: api-gateway-sa/a\\"
+                f"      securityContext:\\n"
+                f"        fsGroup: {settings.SECURITY_CONTEXT_FSGROUP}\\n"
+                f'        fsGroupChangePolicy: "OnRootMismatch"\' '
+                f"{kjob_tpl}"
+            )
+            security_context_output = subprocess.check_output(
+                add_security_context_command, shell=True
+            )
+            logger.info(
+                "Security context added for job: " + str(security_context_output)
+            )
+
         replace_id_output = subprocess.check_output(
             replace_dataset_id_command, shell=True
         )
@@ -2419,25 +2487,36 @@ async def retrieve_dataset(
         404: Dataset Not Found
     """
     user = auth[0]
-    item = dataset_crud.get_by_id(db=db, item_id=dataset_id, user=user)
+    # Check visibility using group-based filter
+    visibility_filter = build_visibility_filter(
+        GeoDataset, user, ArtifactType.dataset, db
+    )
+    item = (
+        db.query(GeoDataset)
+        .filter(and_(GeoDataset.id == dataset_id, visibility_filter))
+        .first()
+    )
     if not item:
         raise HTTPException(
             status_code=404, detail={"msg": f"Dataset {dataset_id} Not Found"}
         )
+    updated_dict = item.__dict__
 
-    if item.status == "Failed" and item.logs:
+    if updated_dict["status"] == "Onboarding":
+        cos_log_path = capture_and_upload_job_log(dataset_id, "v2")
+        if cos_log_path:
+            updated_dict["logs"] = cos_log_path
+
+    if updated_dict["logs"]:
         s3 = object_storage.object_storage_client()
 
         try:
             logs_pre_signed_url = grab_tune_file_presigned_url(
                 bucket_name=settings.DATASET_FILES_BUCKET,
-                file_key=item.logs,
+                file_key=updated_dict["logs"],
                 s3=s3,
                 file_type="dataset logs",
             )
-
-            updated_dict = item.__dict__
-
             updated_dict["logs_presigned_url"] = logs_pre_signed_url
 
             return updated_dict
@@ -2446,8 +2525,7 @@ async def retrieve_dataset(
             logger.exception(
                 f"{dataset_id} Error generating presigned url for {item.logs}"
             )
-
-    return item
+    return updated_dict
 
 
 @app.delete("/datasets/{dataset_id}", tags=["FineTuning / Datasets"])
@@ -2497,7 +2575,7 @@ async def delete_dataset(
     else:
         dataset_to_delete = dataset_crud.get_by_id(db=db, item_id=dataset_id, user=user)
         if dataset_to_delete:
-            dataset_crud.delete(db=db, item_id=dataset_id, user=user)
+            dataset_crud.soft_delete(db=db, item_id=dataset_id, user=user)
         return JSONResponse(
             content={
                 "message": "All objects in the dataset have been successfully deleted",

@@ -42,7 +42,7 @@ class EventStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
-class ModelStatus(enum.StrEnum):
+class ModelStatus(str, enum.Enum):
     PENDING = "PENDING"
     DEPLOY_REQUESTED = "DEPLOY_REQUESTED"
     TOKEN_ERROR = "TOKEN_ERROR"
@@ -53,7 +53,7 @@ class ModelStatus(enum.StrEnum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
-class InferenceStatus(enum.StrEnum):
+class InferenceStatus(str, enum.Enum):
     PENDING = "PENDING"
     SUBMITTED = "SUBMITTED"  # Inference request has been received and registered
     RUNNING = "RUNNING"  # Running the ML model inference per tasK
@@ -67,7 +67,7 @@ class InferenceStatus(enum.StrEnum):
     )
 
 
-class GenericProcessorStatus(enum.StrEnum):
+class GenericProcessorStatus(str, enum.Enum):
     PENDING = "PENDING"  # Script yet uploaded to COS
     FINISHED = "FINISHED"  # Script successfully uploaded to COS
     FAILED = "FAILED"  # Script upload to COS failed

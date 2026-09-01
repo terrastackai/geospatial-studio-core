@@ -2,32 +2,33 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-import os
-import time
 import glob
 import json
-import rasterio
-import rioxarray
+import os
+import time
+from itertools import chain
+from pathlib import Path
+from subprocess import check_output
+from typing import List, Union
+from uuid import uuid4
+from zipfile import ZipFile
+
+import geopandas as gpd
 import numpy as np
 import pandas as pd
+import rasterio
+import rioxarray
 import xarray as xr
-from uuid import uuid4
-import geopandas as gpd
-from pathlib import Path
-from zipfile import ZipFile
-from rasterio import features
-from typing import List, Union
-from subprocess import check_output
-from shapely.geometry import Polygon, box
-
-from gfm_data_processing.common import logger
 from gfm_data_processing import raster_data_operations as rdo
+from gfm_data_processing.common import logger
 from postprocess_regularization import (
-    raster_to_vector,
     adaptive_regularization,
-    regularization,
     hybrid_regularization,
+    raster_to_vector,
+    regularization,
 )
+from rasterio import features
+from shapely.geometry import Polygon, box
 
 # LULC data location
 LULC_TILE_ROOT = os.environ.get("LULC_SHARED_DATA_ROOT", "/auxdata/lulc/lc2021/")
@@ -422,9 +423,10 @@ def zip_inference_data(task_dir):
     zip_location = f"{task_dir}/archive.zip"
 
     directory = Path(task_dir)
+    geoserver_supported_extensions = ("*.tif", "*.gpkg", "*.shp", "*.shx", "*.dbf", "*.cpg", "*.prj", "*.nc")
 
     with ZipFile(zip_location, mode="w") as archive:
-        for file_path in directory.rglob("*.tif"):
+        for file_path in chain.from_iterable(directory.glob(ext) for ext in geoserver_supported_extensions):
             archive.write(file_path, arcname=file_path.relative_to(directory))
 
 
